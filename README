@@ -1,3 +1,24 @@
+=== Quick build ===
+
+wget http://bullet.googlecode.com/files/bullet-2.80-rev2531.zip
+unzip bullet-2.80-rev2531.zip
+cd bullet-2.80-rev2531
+cmake . -G "Unix Makefiles"
+sed -i -e 's/CMAKE_CXX_FLAGS:STRING=/\0-fPIC /' CMakeCache.txt
+sed -i -e "s#/usr/local#$PWD/install#" CMakeCache.txt
+make install
+cd ..
+
+python setup.py build_ext --include-dirs ./bullet-2.80-rev2531/install/include/bullet --library-dirs ./bullet-2.80-rev2531/install/lib
+
+The only file you need is bullet.so (e.g. build/lib.linux-x86_64-2.7/bullet/bullet.so) which should be copied to
+the game's lib dir.
+
+
+
+
+
+
 About
 =====
 PyBullet is a Python wrapper of the Bullet Physics library.
