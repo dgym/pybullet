@@ -20,20 +20,18 @@ struct PyBulletCollision
     int m_triangle_index;
 };
 
-struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback, public btCollisionWorld::ContactResultCallback
+struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback, public btCollisionWorld::ContactResultCallback, public btCollisionWorld::RayResultCallback
 {
     std::list<PyBulletCollision> m_collisions;
+    btVector3 m_ray_from;
+    btVector3 m_ray_len;
 
     virtual btScalar addSingleResult(btManifoldPoint &cp, const btCollisionObject *colObj0, int partId0, int index0, const btCollisionObject *colObj1, int partId1, int index1)
     {
         const btVector3 &pos = cp.getPositionWorldOnA();
         m_collisions.push_back(PyBulletCollision(0.0,
-                                                 btVector3(pos.getX(),
-                                                           pos.getY(),
-                                                           pos.getZ()),
-                                                 btVector3(cp.m_normalWorldOnB.getX(),
-                                                           cp.m_normalWorldOnB.getY(),
-                                                           cp.m_normalWorldOnB.getZ()),
+                                                 pos,
+                                                 cp.m_normalWorldOnB,
                                                  index1));
 
         return 1.f;
@@ -50,13 +48,27 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
 
         m_collisions.insert(iter,
                             PyBulletCollision(convexResult.m_hitFraction,
-                                              btVector3(convexResult.m_hitPointLocal.getX(),
-                                                        convexResult.m_hitPointLocal.getY(),
-                                                        convexResult.m_hitPointLocal.getZ()),
-                                              btVector3(convexResult.m_hitNormalLocal.getX(),
-                                                        convexResult.m_hitNormalLocal.getY(),
-                                                        convexResult.m_hitNormalLocal.getZ()),
+                                              convexResult.m_hitPointLocal,
+                                              convexResult.m_hitNormalLocal,
                                               convexResult.m_localShapeInfo->m_triangleIndex));
+
+        return 1.f;
+    }
+
+    virtual btScalar addSingleResult(btCollisionWorld::LocalRayResult& rayResult, bool normalInWorldSpace)
+    {
+        std::list<PyBulletCollision>::iterator iter;
+        for (iter = m_collisions.begin(); iter != m_collisions.end(); ++iter)
+        {
+            if (rayResult.m_hitFraction < iter->m_distance)
+                break;
+        }
+
+        m_collisions.insert(iter,
+                            PyBulletCollision(rayResult.m_hitFraction,
+                                              m_ray_from + m_ray_len * rayResult.m_hitFraction,
+                                              rayResult.m_hitNormalLocal,
+                                              rayResult.m_localShapeInfo->m_triangleIndex));
 
         return 1.f;
     }
@@ -101,4 +113,14 @@ void pybullet_sweep(btCollisionWorld *world, btConvexShape *shape, btTransform t
 
     // Then perform the sweep
     world->convexSweepTest(shape, trans_from, trans_to, *results, 0.f);
+}
+
+void pybullet_ray(btCollisionWorld *world, btVector3 from, btVector3 to, PyBulletCollisionResults *results)
+{
+    // Clear previous results
+    results->m_collisions.clear();
+    results->m_ray_from = from;
+    results->m_ray_len = to - from;
+
+    world->rayTest(from, to, *results);
 }

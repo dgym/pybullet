@@ -449,6 +449,7 @@ cdef extern from "utils.h":
 
     cdef void pybullet_contact(btCollisionWorld *world, btCollisionShape *shape, btTransform trans, PyBulletCollisionResults *results)
     cdef void pybullet_sweep(btCollisionWorld *world, btCollisionShape *shape, btTransform trans_from, btTransform trans_to, PyBulletCollisionResults *results)
+    cdef void pybullet_ray(btCollisionWorld *world, btVector3 from_world, btVector3 to_world, PyBulletCollisionResults *results)
 
 
 # Forward declare some things because of circularity in the API.
@@ -529,6 +530,8 @@ cdef class Vector3:
         cdef btVector3 v2 = btVector3(other.x, other.y, other.z)
         return v1.dot(v2)
 
+    cdef btVector3 to_bt(self):
+        return btVector3(self.x, self.y, self.z)
 
 
 cdef class Quaternion:
@@ -1842,6 +1845,18 @@ cdef class CollisionWorld:
         finally:
             del results
 
+
+    def RayTest(self, Vector3 from_world, Vector3 to_world):
+        cdef PyBulletCollisionResults *results = new PyBulletCollisionResults()
+
+        try:
+            pybullet_ray(self.thisptr,
+                    from_world.to_bt(),
+                    to_world.to_bt(),
+                    results)
+            return self.__collisionResultsToList(results)
+        finally:
+            del results
 
 
 cdef class DynamicsWorld(CollisionWorld):
