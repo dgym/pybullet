@@ -6,11 +6,12 @@ struct PyBulletCollision
     {
     }
 
-    PyBulletCollision(float distance, const btVector3 &position, const btVector3 &collision_normal, int triangle_index) :
+    PyBulletCollision(float distance, const btVector3 &position, const btVector3 &collision_normal, int triangle_index, const btCollisionObject *object) :
         m_distance(distance),
         m_position(position),
         m_collision_normal(collision_normal),
-        m_triangle_index(triangle_index)
+        m_triangle_index(triangle_index),
+        m_object(object)
     {
     }
 
@@ -18,6 +19,7 @@ struct PyBulletCollision
     btVector3 m_position;
     btVector3 m_collision_normal;
     int m_triangle_index;
+    const btCollisionObject *m_object;
 };
 
 struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback, public btCollisionWorld::ContactResultCallback, public btCollisionWorld::RayResultCallback
@@ -32,7 +34,8 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
         m_collisions.push_back(PyBulletCollision(0.0,
                                                  pos,
                                                  cp.m_normalWorldOnB,
-                                                 index1));
+                                                 index1,
+                                                 colObj1));
 
         return 1.f;
     }
@@ -50,7 +53,8 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
                             PyBulletCollision(convexResult.m_hitFraction,
                                               convexResult.m_hitPointLocal,
                                               convexResult.m_hitNormalLocal,
-                                              convexResult.m_localShapeInfo->m_triangleIndex));
+                                              convexResult.m_localShapeInfo->m_triangleIndex,
+                                              convexResult.m_hitCollisionObject));
 
         return 1.f;
     }
@@ -68,7 +72,8 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
                             PyBulletCollision(rayResult.m_hitFraction,
                                               m_ray_from + m_ray_len * rayResult.m_hitFraction,
                                               rayResult.m_hitNormalLocal,
-                                              rayResult.m_localShapeInfo->m_triangleIndex));
+                                              rayResult.m_localShapeInfo->m_triangleIndex,
+                                              rayResult.m_collisionObject));
 
         return 1.f;
     }

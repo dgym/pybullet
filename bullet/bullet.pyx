@@ -159,6 +159,9 @@ cdef extern from "btBulletDynamicsCommon.h":
         int getActivationState()
         void setActivationState(int newState)
 
+        void *getUserPointer()
+        void setUserPointer(void *)
+
 
     cdef cppclass btRigidBody(btCollisionObject)
 
@@ -442,6 +445,7 @@ cdef extern from "utils.h":
         btVector3 m_position
         btVector3 m_collision_normal
         int m_triangle_index
+        btCollisionObject *m_object
 
     cdef cppclass PyBulletCollisionResults:
         bool more()
@@ -1713,6 +1717,7 @@ cdef class Collision:
     cdef public Vector3 position
     cdef public Vector3 collision_normal
     cdef public int triangle_index
+    cdef public CollisionObject collision_object
 
 
 
@@ -1728,6 +1733,8 @@ cdef class CollisionWorld:
 
     cdef _object *dispatcher
     cdef _object *broadphase
+
+    cdef object collisionObjects
 
     def __init__(self,
                  CollisionDispatcher dispatcher = None,
@@ -1747,6 +1754,8 @@ cdef class CollisionWorld:
         if self.thisptr == NULL:
             self.thisptr = new btCollisionWorld(
                 dispatcher.thisptr, broadphase.thisptr, dispatcher.config)
+
+        self.collisionObjects = set()
 
 
     def __dealloc__(self):
@@ -1782,6 +1791,14 @@ cdef class CollisionWorld:
         return self.thisptr.getNumCollisionObjects()
 
 
+    def getCollisionObjects(self):
+        """
+        Return a list of all the CollisionObjects which are part of this
+        CollisionWorld.
+        """
+        return list(self.collisionObjects)
+
+
     def addCollisionObject(self, CollisionObject collisionObject):
         """
         Add a new CollisionObject to this CollisionWorld.
@@ -1792,14 +1809,19 @@ cdef class CollisionWorld:
         if collisionObject.thisptr.getCollisionShape() == NULL:
             raise ValueError(
                 "Cannot add CollisionObject without a CollisionShape")
-        self.thisptr.addCollisionObject(collisionObject.thisptr, 1, -1)
+        if collisionObject not in self.collisionObjects:
+            self.thisptr.addCollisionObject(collisionObject.thisptr, 1, -1)
+            self.collisionObjects.add(collisionObject)
+            collisionObject.thisptr.setUserPointer(<void *>collisionObject)
 
 
     def removeCollisionObject(self, CollisionObject collisionObject):
         """
         Remove a CollisionObject from this CollisionWorld.
         """
-        self.thisptr.removeCollisionObject(collisionObject.thisptr)
+        if collisionObject in self.collisionObjects:
+            self.thisptr.removeCollisionObject(collisionObject.thisptr)
+            self.collisionObjects.remove(collisionObject)
 
 
     cdef __collisionResultsToList(self, PyBulletCollisionResults *results):
@@ -1814,6 +1836,7 @@ cdef class CollisionWorld:
             py_collision.position = Vector3(c_collision.m_position.getX(), c_collision.m_position.getY(), c_collision.m_position.getZ())
             py_collision.collision_normal = Vector3(c_collision.m_collision_normal.getX(), c_collision.m_collision_normal.getY(), c_collision.m_collision_normal.getZ())
             py_collision.triangle_index = c_collision.m_triangle_index
+            py_collision.collision_object = <object>c_collision.m_object.getUserPointer()
             collisions.append(py_collision)
 
         return collisions
