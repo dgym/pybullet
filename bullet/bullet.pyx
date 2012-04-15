@@ -399,6 +399,8 @@ cdef extern from "btBulletCollisionCommon.h":
         void addCollisionObject(btCollisionObject*, short int, short int)
         void removeCollisionObject(btCollisionObject*)
 
+        void updateSingleAabb(btCollisionObject *)
+
 
 
 cdef extern from "btBulletDynamicsCommon.h":
@@ -1822,6 +1824,13 @@ cdef class CollisionWorld:
         if collisionObject in self.collisionObjects:
             self.thisptr.removeCollisionObject(collisionObject.thisptr)
             self.collisionObjects.remove(collisionObject)
+
+
+    def updateSingleAabb(self, CollisionObject collisionObject):
+        """
+        Updates a CollisionObject's AABB, necessary after updating its transform.
+        """
+        self.thisptr.updateSingleAabb(collisionObject.thisptr)
 
 
     cdef __collisionResultsToList(self, PyBulletCollisionResults *results):

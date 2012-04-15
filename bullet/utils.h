@@ -22,6 +22,13 @@ struct PyBulletCollision
     const btCollisionObject *m_object;
 };
 
+inline static int triangle_index(const btCollisionWorld::LocalShapeInfo *info)
+{
+    if (info)
+        return info->m_triangleIndex;
+    return 0;
+}
+
 struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback, public btCollisionWorld::ContactResultCallback, public btCollisionWorld::RayResultCallback
 {
     std::list<PyBulletCollision> m_collisions;
@@ -53,7 +60,7 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
                             PyBulletCollision(convexResult.m_hitFraction,
                                               convexResult.m_hitPointLocal,
                                               convexResult.m_hitNormalLocal,
-                                              convexResult.m_localShapeInfo->m_triangleIndex,
+                                              triangle_index(convexResult.m_localShapeInfo),
                                               convexResult.m_hitCollisionObject));
 
         return 1.f;
@@ -72,10 +79,15 @@ struct PyBulletCollisionResults : public btCollisionWorld::ConvexResultCallback,
                             PyBulletCollision(rayResult.m_hitFraction,
                                               m_ray_from + m_ray_len * rayResult.m_hitFraction,
                                               rayResult.m_hitNormalLocal,
-                                              rayResult.m_localShapeInfo->m_triangleIndex,
+                                              triangle_index(rayResult.m_localShapeInfo),
                                               rayResult.m_collisionObject));
 
         return 1.f;
+    }
+
+    virtual bool needsCollision(btBroadphaseProxy* proxy0) const
+    {
+        return true;
     }
 
     bool more()
