@@ -159,6 +159,9 @@ cdef extern from "btBulletDynamicsCommon.h":
         int getActivationState()
         void setActivationState(int newState)
 
+        int getCollisionFlags()
+        void setCollisionFlags(int flags)
+
         void *getUserPointer()
         void setUserPointer(void *)
 
@@ -1048,6 +1051,7 @@ cdef class CollisionObject:
     """
     cdef btCollisionObject *thisptr
     cdef CollisionShape _shape
+    cdef public object data
 
     def __init__(self):
         self.thisptr = new btCollisionObject()
@@ -1137,6 +1141,12 @@ cdef class CollisionObject:
           - DISABLE_SIMULATION
         """
         self.thisptr.setActivationState(newState)
+
+    def getCollisionFlags(self):
+        return self.thisptr.getCollisionFlags()
+
+    def setCollisionFlags(self, flags):
+        self.thisptr.setCollisionFlags(flags)
 
 
 cdef class MotionState:
