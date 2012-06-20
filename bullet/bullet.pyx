@@ -457,6 +457,7 @@ cdef extern from "utils.h":
         PyBulletCollision pop()
 
     cdef void pybullet_contact(btCollisionWorld *world, btCollisionShape *shape, btTransform trans, PyBulletCollisionResults *results)
+    cdef bool pybullet_contact_pair(btCollisionWorld *world, btCollisionObject *a, btCollisionObject *b)
     cdef void pybullet_sweep(btCollisionWorld *world, btCollisionShape *shape, btTransform trans_from, btTransform trans_to, PyBulletCollisionResults *results)
     cdef void pybullet_ray(btCollisionWorld *world, btVector3 from_world, btVector3 to_world, PyBulletCollisionResults *results)
 
@@ -1873,6 +1874,11 @@ cdef class CollisionWorld:
         finally:
             del results
 
+
+    def contactPairTest(self, CollisionObject a not None, CollisionObject b not None):
+        return  pybullet_contact_pair(self.thisptr,
+                a.thisptr,
+                b.thisptr)
 
     def convexSweepTest(self, ConvexShape shape, Transform trans_from, Transform trans_to):
         cdef PyBulletCollisionResults *results = new PyBulletCollisionResults()

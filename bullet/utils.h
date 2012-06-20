@@ -115,6 +115,13 @@ void pybullet_contact(btCollisionWorld *world, btConvexShape *shape, btTransform
     world->contactTest(&object, *results);
 }
 
+bool pybullet_contact_pair(btCollisionWorld *world, btCollisionObject *a, btCollisionObject *b)
+{
+    PyBulletCollisionResults results;
+    world->contactPairTest(a, b, results);
+    return results.m_collisions.size();
+}
+
 void pybullet_sweep(btCollisionWorld *world, btConvexShape *shape, btTransform trans_from, btTransform trans_to, PyBulletCollisionResults *results)
 {
     // Clear previous results
