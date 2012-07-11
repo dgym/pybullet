@@ -1053,6 +1053,7 @@ cdef class CollisionObject:
     cdef btCollisionObject *thisptr
     cdef CollisionShape _shape
     cdef public object data
+    cdef public int bits
 
     def __init__(self):
         self.thisptr = new btCollisionObject()
