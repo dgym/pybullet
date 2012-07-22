@@ -358,7 +358,8 @@ cdef extern from "btBulletCollisionCommon.h":
 
 
     cdef cppclass btDbvtBroadphase(btBroadphaseInterface):
-        pass
+        btDbvtBroadphase(btOverlappingPairCache *pairCache)
+        void optimize()
 
 
     cdef cppclass btRigidBody(btCollisionObject):
@@ -1691,6 +1692,14 @@ cdef class AxisSweep3(BroadphaseInterface):
             16384, self._paircache.thisptr, False)
 
 
+cdef class DbvtBroadphase(BroadphaseInterface):
+    def __cinit__(self):
+        self._paircache = HashedOverlappingPairCache()
+        self.thisptr = new btDbvtBroadphase(self._paircache.thisptr)
+
+    def optimize(self):
+        (<btDbvtBroadphase *>self.thisptr).optimize()
+
 
 cdef class ConstraintSolver:
     """
@@ -1813,7 +1822,7 @@ cdef class CollisionWorld:
         return list(self.collisionObjects)
 
 
-    def addCollisionObject(self, CollisionObject collisionObject):
+    def addCollisionObject(self, CollisionObject collisionObject, collision_filter_group=0, collision_filter_mask=-1):
         """
         Add a new CollisionObject to this CollisionWorld.
 
@@ -1824,7 +1833,7 @@ cdef class CollisionWorld:
             raise ValueError(
                 "Cannot add CollisionObject without a CollisionShape")
         if collisionObject not in self.collisionObjects:
-            self.thisptr.addCollisionObject(collisionObject.thisptr, 1, -1)
+            self.thisptr.addCollisionObject(collisionObject.thisptr, collision_filter_group, collision_filter_mask)
             self.collisionObjects.add(collisionObject)
             collisionObject.thisptr.setUserPointer(<void *>collisionObject)
 
