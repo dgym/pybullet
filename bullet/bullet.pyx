@@ -423,7 +423,7 @@ cdef extern from "btBulletDynamicsCommon.h":
         void setGravity(btVector3)
         btVector3 getGravity()
 
-        void addRigidBody(btRigidBody*)
+        void addRigidBody(btRigidBody*, short, short)
         void removeRigidBody(btRigidBody*)
 
         void addAction(btActionInterface*)
@@ -1822,7 +1822,7 @@ cdef class CollisionWorld:
         return list(self.collisionObjects)
 
 
-    def addCollisionObject(self, CollisionObject collisionObject, collision_filter_group=0, collision_filter_mask=-1):
+    def addCollisionObject(self, CollisionObject collisionObject, collision_filter_group=1, collision_filter_mask=-1):
         """
         Add a new CollisionObject to this CollisionWorld.
 
@@ -1904,7 +1904,7 @@ cdef class CollisionWorld:
             del results
 
 
-    def RayTest(self, Vector3 from_world, Vector3 to_world):
+    def rayTest(self, Vector3 from_world, Vector3 to_world):
         cdef PyBulletCollisionResults *results = new PyBulletCollisionResults()
 
         try:
@@ -1936,13 +1936,14 @@ cdef class DynamicsWorld(CollisionWorld):
         self._rigidBodies = []
 
 
-    def addRigidBody(self, RigidBody body not None):
+    def addRigidBody(self, RigidBody body not None, collision_filter_group=1, collision_filter_mask=-1):
         """
         Add a new RigidBody to this DynamicsWorld.
         """
         cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
-        world.addRigidBody(<btRigidBody*>body.thisptr)
+        world.addRigidBody(<btRigidBody*>body.thisptr, collision_filter_group, collision_filter_mask)
         self._rigidBodies.append(body)
+        body.thisptr.setUserPointer(<void *>body)
 
 
     def removeRigidBody(self, RigidBody body not None):
