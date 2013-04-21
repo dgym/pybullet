@@ -17,6 +17,7 @@ example:
 
 from libcpp cimport bool
 
+import numpy
 cimport numpy
 
 
@@ -93,7 +94,7 @@ cdef extern from "btBulletCollisionCommon.h":
 
     cdef cppclass btBoxShape(btConvexShape):
         btBoxShape(btVector3 boxHalfExtents)
-
+        btVector3& getHalfExtentsWithoutMargin()
 
     cdef cppclass btSphereShape(btConvexShape):
         btSphereShape(btScalar radius)
@@ -103,10 +104,6 @@ cdef extern from "btBulletCollisionCommon.h":
 
     cdef cppclass btCapsuleShape(btConvexShape):
         btCapsuleShape(btScalar radius, btScalar height)
-
-
-    cdef cppclass btCapsuleShapeZ(btConvexShape):
-        btCapsuleShapeZ(btScalar radius, btScalar height)
 
 
     cdef cppclass btBvhTriangleMeshShape(btConvexShape):
@@ -122,8 +119,41 @@ cdef extern from "BulletCollision/CollisionShapes/btBox2dShape.h":
     cdef cppclass btBox2dShape(btConvexShape):
         btBox2dShape(btVector3 boxHalfExtents)
 
+cdef extern from "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h":
+    cdef cppclass btBroadphaseProxy
+
 
 cdef extern from "btBulletDynamicsCommon.h":
+    cdef cppclass btMatrix3x3:
+        btMatrix3x3()
+        btMatrix3x3(btQuaternion&)
+        btMatrix3x3(btScalar&, btScalar&, btScalar&,
+                    btScalar&, btScalar&, btScalar&,
+                    btScalar&, btScalar&, btScalar&) # N.B. row-major
+
+        btVector3 getColumn(int)
+        btVector3& getRow(int)
+        
+        void setValue(btScalar&, btScalar&, btScalar&,
+                      btScalar&, btScalar&, btScalar&,
+                      btScalar&, btScalar&, btScalar&) # N.B. row-major
+        void setRotation(btQuaternion&)
+        void setEulerYPR(btScalar&, btScalar&, btScalar&)
+        void setEulerZYX(btScalar, btScalar, btScalar)
+        void setIdentity()
+        
+        void getRotation(btQuaternion&)
+        void getEulerYPR(btScalar&, btScalar&, btScalar&)
+        void getEulerZYX(btScalar&, btScalar&, btScalar&, int)        
+        
+        btMatrix3x3 scaled(btVector3&)
+        btScalar determinant()
+        btMatrix3x3 adjoint()
+        btMatrix3x3 absolute()
+        btMatrix3x3 transpose()
+        btMatrix3x3 inverse()
+
+
     cdef cppclass btTransform:
         btVector3 getOrigin()
         void setOrigin(btVector3)
@@ -131,6 +161,9 @@ cdef extern from "btBulletDynamicsCommon.h":
         void setRotation(btQuaternion&)
         btQuaternion getRotation()
 
+        btMatrix3x3& getBasis()
+        
+        void getOpenGLMatrix(btScalar* arr)
 
     cdef cppclass btMotionState:
         void getWorldTransform(btTransform &transform)
@@ -153,8 +186,14 @@ cdef extern from "btBulletDynamicsCommon.h":
         void setRestitution(btScalar)
         btScalar getRestitution()
 
+        btTransform& getInterpolationWorldTransform()
         btTransform& getWorldTransform()
         void setWorldTransform(btTransform& worldTrans)
+
+        void setContactProcessingThreshold(btScalar)
+        btScalar getContactProcessingThreshold()
+
+        btBroadphaseProxy* getBroadphaseHandle()
 
         int getActivationState()
         void setActivationState(int newState)
@@ -179,6 +218,37 @@ cdef extern from "btBulletDynamicsCommon.h":
         void setVelocityForTimeInterval(
             btVector3 velocity, btScalar timeInterval)
 
+cdef extern from "BulletDynamics/ConstraintSolver/btTypedConstraint.h":
+
+    cdef enum btTypedConstraintType:    
+        POINT2POINT_CONSTRAINT_TYPE
+        HINGE_CONSTRAINT_TYPE
+        CONETWIST_CONSTRAINT_TYPE
+        D6_CONSTRAINT_TYPE
+        SLIDER_CONSTRAINT_TYPE
+        CONTACT_CONSTRAINT_TYPE 
+
+    cdef cppclass btTypedConstraint:
+    
+        btRigidBody &   getRigidBodyA ()
+        btRigidBody &   getRigidBodyB ()
+        int     getUserConstraintType () 
+        void    setUserConstraintType (int userConstraintType)
+        void    setUserConstraintId (int uid)
+        int     getUserConstraintId () 
+        int     getUid () 
+        bool    needsFeedback () 
+        void    enableFeedback (bool needsFeedback)
+        btScalar    getAppliedImpulse ()
+        btTypedConstraintType   getConstraintType ()
+
+
+cdef extern from "BulletCollision/CollisionShapes/btCompoundShape.h":
+    cdef cppclass btCompoundShape(btCollisionShape):
+        btCompoundShape(bool)
+        
+        void addChildShape(btTransform&, btCollisionShape*)
+        void removeChildShape(btCollisionShape*)
 
 
 cdef extern from "BulletCollision/CollisionShapes/btCylinderShape.h":
@@ -343,19 +413,20 @@ cdef extern from "btBulletCollisionCommon.h":
 
         btVector3 getAxis()
         btScalar getAngle()
-
+        btScalar angle(btQuaternion& other)
         btQuaternion operator* (btQuaternion)
 
 
     cdef cppclass btBroadphaseInterface:
         btOverlappingPairCache* getOverlappingPairCache()
-
+    
+    cdef cppclass btOverlappingPairCache   #LOOK
 
     cdef cppclass btAxisSweep3(btBroadphaseInterface):
         btAxisSweep3(btVector3, btVector3, unsigned short int maxHandles,
                      btOverlappingPairCache *pairCache,
                      bool disableRaycastAccelerator)
-
+        btOverlappingPairCache* getOverlappingPairCache()
 
     cdef cppclass btDbvtBroadphase(btBroadphaseInterface):
         btDbvtBroadphase(btOverlappingPairCache *pairCache)
@@ -386,7 +457,15 @@ cdef extern from "btBulletCollisionCommon.h":
 
         void applyCentralImpulse(btVector3 impulse)
         void applyImpulse(btVector3 impulse, btVector3 relativePosition)
-
+        void applyTorque(btVector3& torque)
+        void applyTorqueImpulse(btVector3& torque)
+        void setCenterOfMassTransform(btTransform& trans)
+        btTransform& getCenterOfMassTransform()
+        
+        void setAngularVelocity(btVector3& velocity)
+        btVector3& getAngularVelocity()
+        
+        btQuaternion getOrientation()
 
     cdef cppclass btCollisionWorld:
         btCollisionWorld(
@@ -405,7 +484,10 @@ cdef extern from "btBulletCollisionCommon.h":
 
         void updateSingleAabb(btCollisionObject *)
 
+cdef extern from "BulletCollision/BroadphaseCollision/btOverlappingPairCache.h":
+    cdef cppclass btOverlappingPairCache:
 
+        void cleanProxyFromPairs(btBroadphaseProxy *proxy, btDispatcher *dispatcher)
 
 cdef extern from "btBulletDynamicsCommon.h":
     cdef cppclass btConstraintSolver:
@@ -422,8 +504,12 @@ cdef extern from "btBulletDynamicsCommon.h":
 
         void setGravity(btVector3)
         btVector3 getGravity()
-
-        void addRigidBody(btRigidBody*, short, short)
+        
+        void addConstraint(btTypedConstraint*, bool)
+        void removeConstraint(btTypedConstraint*)
+        
+        void addRigidBody(btRigidBody*, short int, short int)
+        void addRigidBody(btRigidBody*)
         void removeRigidBody(btRigidBody*)
 
         void addAction(btActionInterface*)
@@ -444,6 +530,13 @@ cdef extern from "bulletdebugdraw.h":
     cdef cppclass PythonDebugDraw(btIDebugDraw):
         PythonDebugDraw(PyObject *debugDraw)
 
+cdef extern from "BulletDynamics/Vehicle/btVehicleRaycaster.h" namespace "btVehicleRaycaster":
+
+    cdef cppclass btVehicleRaycasterResult:
+        btVector3 m_hitPointInWorld
+        btVector3 m_hitNormalInWorld
+        btScalar m_distFraction
+        
 
 cdef extern from "utils.h":
     cdef cppclass PyBulletCollision:
@@ -463,8 +556,248 @@ cdef extern from "utils.h":
     cdef void pybullet_ray(btCollisionWorld *world, btVector3 from_world, btVector3 to_world, PyBulletCollisionResults *results)
 
 
+cdef extern from "BulletDynamics/Vehicle/btVehicleRaycaster.h":  
+        
+    cdef cppclass btVehicleRaycaster:
+        pass
+            
+
+cdef extern from "BulletDynamics/Vehicle/btWheelInfo.h" namespace "btWheelInfo":
+    
+    # N.B. the namespace appears to be lost if we just put in "RaycastInfo",
+    # so we have to work around it like this. TODO file a bug with cython.
+    cdef cppclass btRaycastInfo "btWheelInfo::RaycastInfo":
+        btVector3   m_contactNormalWS
+        btVector3   m_contactPointWS
+        btScalar    m_suspensionLength
+        btVector3   m_hardPointWS
+        btVector3   m_wheelDirectionWS
+        btVector3   m_wheelAxleWS
+        bool    m_isInContact
+        void *  m_groundObject
+
+
+cdef extern from "BulletDynamics/Vehicle/btWheelInfo.h":    
+
+    cdef cppclass btWheelInfoConstructionInfo:
+        btVector3   m_chassisConnectionCS
+        btVector3   m_wheelDirectionCS
+        btVector3   m_wheelAxleCS
+        btScalar    m_suspensionRestLength
+        btScalar    m_maxSuspensionTravelCm
+        btScalar    m_wheelRadius
+        btScalar    m_suspensionStiffness
+        btScalar    m_wheelsDampingCompression
+        btScalar    m_wheelsDampingRelaxation
+        btScalar    m_frictionSlip
+        btScalar    m_maxSuspensionForce
+        bool    m_bIsFrontWheel
+    
+    cdef cppclass btWheelInfo:
+        btScalar    getSuspensionRestLength ()
+        btWheelInfo (btWheelInfoConstructionInfo &ci)
+        void    updateWheel (btRigidBody &chassis, btRaycastInfo &raycastInfo)        
+        btRaycastInfo   m_raycastInfo
+        btTransform     m_worldTransform
+        btVector3   m_chassisConnectionPointCS
+        btVector3   m_wheelDirectionCS
+        btVector3   m_wheelAxleCS
+        btScalar    m_suspensionRestLength1
+        btScalar    m_maxSuspensionTravelCm
+        btScalar    m_wheelsRadius
+        btScalar    m_suspensionStiffness
+        btScalar    m_wheelsDampingCompression
+        btScalar    m_wheelsDampingRelaxation
+        btScalar    m_frictionSlip
+        btScalar    m_steering
+        btScalar    m_rotation
+        btScalar    m_deltaRotation
+        btScalar    m_rollInfluence
+        btScalar    m_maxSuspensionForce
+        btScalar    m_engineForce
+        btScalar    m_brake
+        bool    m_bIsFrontWheel
+        void *  m_clientInfo
+        btScalar    m_clippedInvContactDotSuspension
+        btScalar    m_suspensionRelativeVelocity
+        btScalar    m_wheelsSuspensionForce
+        btScalar    m_skidInfo
+
+
+cdef extern from "BulletDynamics/Vehicle/btRaycastVehicle.h" namespace "btRaycastVehicle":
+
+    cdef cppclass btVehicleTuning:
+        btScalar m_suspensionStiffness
+        btScalar m_suspensionCompression
+        btScalar m_suspensionDamping
+        btScalar m_maxSuspensionTravelCm
+        btScalar m_frictionSlip
+        btScalar m_maxSuspensionForce
+
+
+cdef extern from "BulletDynamics/Vehicle/btRaycastVehicle.h":
+
+    cdef cppclass btDefaultVehicleRaycaster(btVehicleRaycaster):
+        btDefaultVehicleRaycaster(btDynamicsWorld* world)
+        void* castRay(btVector3& fromVector, btVector3& toVector, btVehicleRaycasterResult& result)
+            
+    cdef cppclass btRaycastVehicle(btActionInterface):
+        btRaycastVehicle(btVehicleTuning &tuning, btRigidBody *chassis, btVehicleRaycaster *raycaster)
+
+        btScalar rayCast(btWheelInfo &wheel)
+
+        btTransform& getWheelTransformWS(int wheelIndex) 
+        btTransform& getChassisWorldTransform()
+
+        void resetSuspension()
+
+        #void setRaycastWheelInfo(int wheelIndex, bool isInContact, btVector3 &hitPoint, btVector3 &hitNormal, btScalar depth)
+        btWheelInfo& getWheelInfo(int index) 
+        int getNumWheels() 
+        btWheelInfo& addWheel(btVector3 &connectionPointCS0, btVector3 &wheelDirectionCS0, btVector3 &wheelAxleCS, btScalar suspensionRestLength, btScalar wheelRadius, btVehicleTuning &tuning, bool isFrontWheel)
+
+        btScalar getSteeringValue(int wheel) 
+
+        void setSteeringValue(btScalar steering, int wheel)
+        void applyEngineForce(btScalar force, int wheel)
+        void setBrake(btScalar brake, int wheelIndex)
+        void setPitchControl(btScalar pitch)
+
+        void updateWheelTransform(int wheelIndex, bool interpolatedTransform)
+        void updateWheelTransformsWS(btWheelInfo &wheel, bool interpolatedTransform)
+        void updateVehicle(btScalar step)
+        void updateSuspension(btScalar deltaTime)
+        void updateFriction(btScalar timeStep)
+
+        btRigidBody* getRigidBody()
+
+        btVector3 getForwardVector() 
+        btScalar getCurrentSpeedKmHour() 
+        
+        void setCoordinateSystem(int rightIndex, int upIndex, int forwardIndex)    
+        int getRightAxis() 
+        int getUpAxis() 
+        int getForwardAxis() 
+
+
+cdef extern from "BulletDynamics/ConstraintSolver/btGeneric6DofConstraint.h":
+
+    cdef cppclass btRotationalLimitMotor:
+        btRotationalLimitMotor ()
+        bool    isLimited ()
+        bool    needApplyTorques ()
+        int     testLimitValue (btScalar test_value)
+        
+        btScalar    m_loLimit
+        btScalar    m_hiLimit
+        btScalar    m_targetVelocity
+        btScalar    m_maxMotorForce
+        btScalar    m_maxLimitForce
+        btScalar    m_damping
+        btScalar    m_limitSoftness
+        btScalar    m_normalCFM
+        btScalar    m_stopERP
+        btScalar    m_stopCFM
+        btScalar    m_bounce
+        bool    m_enableMotor
+        btScalar    m_currentLimitError
+        btScalar    m_currentPosition
+        int     m_currentLimit
+        btScalar    m_accumulatedImpulse
+
+    cdef cppclass btGeneric6DofConstraint(btTypedConstraint):
+        
+        btGeneric6DofConstraint() # XXX won't compile without this
+        
+        btGeneric6DofConstraint(btRigidBody&, btRigidBody&, btTransform&, btTransform&, bool)
+        btGeneric6DofConstraint(btRigidBody&, btTransform&, bool)
+        void    calculateTransforms (btTransform &transA, btTransform &transB)
+        void    calculateTransforms ()
+        btTransform &   getCalculatedTransformA ()
+        btTransform &   getCalculatedTransformB ()
+        btTransform &   getFrameOffsetA ()
+        btTransform &   getFrameOffsetB ()
+        void    buildJacobian ()
+
+        void    updateRHS (btScalar timeStep)
+        btVector3   getAxis (int axis_index)
+        btScalar    getAngle (int axis_index)
+        btScalar    getRelativePivotPosition (int axis_index)
+        bool    testAngularLimitMotor (int axis_index)
+        void    setLinearLowerLimit (btVector3 &linearLower)
+        void    setLinearUpperLimit (btVector3 &linearUpper)
+        void    setAngularLowerLimit (btVector3 &angularLower)
+        void    setAngularUpperLimit (btVector3 &angularUpper)
+        btRotationalLimitMotor *    getRotationalLimitMotor (int index)
+        # TODO btTranslationalLimitMotor *  getTranslationalLimitMotor ()
+        void    setLimit (int axis, btScalar lo, btScalar hi)
+        bool    isLimited (int limitIndex)
+        void    calcAnchorPos()
+        bool    getUseFrameOffset ()
+        void    setUseFrameOffset (bool frameOffsetOnOff)
+        # XXX problem with default args again...
+        void    setParam (int num, btScalar value, int axis)
+        btScalar    getParam (int num, int axis)
+
+
+cdef extern from "BulletDynamics/ConstraintSolver/btGeneric6DofSpringConstraint.h":
+
+    cdef cppclass btGeneric6DofSpringConstraint(btGeneric6DofConstraint):
+
+        btGeneric6DofSpringConstraint() # XXX won't compile without this
+        
+        btGeneric6DofSpringConstraint (btRigidBody &rbA, btRigidBody &rbB, btTransform &frameInA, btTransform &frameInB, bool useLinearReferenceFrameA)
+        void    enableSpring (int index, bool onOff)
+        void    setStiffness (int index, btScalar stiffness)
+        void    setDamping (int index, btScalar damping)
+        void    setEquilibriumPoint ()
+        void    setEquilibriumPoint (int index)        
+
+
+cdef extern from "BulletDynamics/ConstraintSolver/btHinge2Constraint.h":
+
+    cdef cppclass btHinge2Constraint(btGeneric6DofSpringConstraint):
+
+        btHinge2Constraint (btRigidBody &rbA, btRigidBody &rbB, btVector3 &anchor, btVector3 &axis1, btVector3 &axis2)
+        btVector3 &     getAnchor ()
+        btVector3 &     getAnchor2 ()
+        btVector3 &     getAxis1 ()
+        btVector3 &     getAxis2 ()
+        btScalar    getAngle1 ()
+        btScalar    getAngle2 ()
+        void    setUpperLimit (btScalar ang1max)
+        void    setLowerLimit (btScalar ang1min)
+
+cdef extern from "BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h":
+
+    cdef cppclass btPoint2PointConstraint(btGeneric6DofSpringConstraint):
+
+        btPoint2PointConstraint (btRigidBody &rbA, btRigidBody &rbB, btVector3 &pivotInA, btVector3 &pivotInB)
+        # There is another constructor in btPoint2PointConstraint, but we didn't implement it yet
+        
+        # We did not expose:
+        #   void buildJacobian()
+        #   void getInfo1(btConstraintInfo1* info)
+        #   void getInfo1NonVirtual(btConstraintInfo1* info)
+        #   void getInfo2(btConstraintInfo2* info)
+        #   void getInfo2NonVirtual(btConstraintInfo2* info, const btTransform& body0_trans, const btTransform& body1_trans)
+        #   void updateRHS(btScalar timeStep)
+        
+        #   void setParam(int num, btScalar value, int axis = -1)
+        #   btScalar getParam(int num, int axis = -1)
+        #   int calculateSerializeBufferSize()
+        #   char* serialize(void* dataBuffer, btSerializer* serializer)
+
+        void    setPivotA (btVector3 &pivotA)        
+        void    setPivotB (btVector3 &pivotB)
+        
+        btVector3 &     getPivotInA ()
+        btVector3 &     getPivotInB ()
+
 # Forward declare some things because of circularity in the API.
 cdef class CollisionObject
+cdef class CollisionDispatcher
+cdef class TypedConstraint
 
 
 
@@ -486,9 +819,14 @@ cdef class Vector3:
         self.y = y
         self.z = z
 
+    def __getitem__(self, ind):
+        return [self.x, self.y, self.z][ind]
 
+    def __str__(self):
+        return '<Vector x=%s y=%s z=%s>' % self.__repr__()
+        
     def __repr__(self):
-        return '<Vector x=%s y=%s z=%s>' % (self.x, self.y, self.z)
+        return (self.x, self.y, self.z)
 
 
     def __mul__(Vector3 self, scale):
@@ -555,6 +893,9 @@ cdef class Quaternion:
     """
     cdef btQuaternion* quaternion
 
+    def __cinit__(self):
+        self.quaternion = new btQuaternion()
+
     def __dealloc__(self):
         del self.quaternion
 
@@ -565,6 +906,7 @@ cdef class Quaternion:
         Construct a new Quaternion from four scalar components.
         """
         q = Quaternion()
+        del q.quaternion
         q.quaternion = new btQuaternion(x, y, z, w)
         return q
 
@@ -575,6 +917,7 @@ cdef class Quaternion:
         Construct a new Quaternion from an axis and a rotation around that axis.
         """
         q = Quaternion()
+        del q.quaternion
         q.quaternion = new btQuaternion(
             btVector3(axis.x, axis.y, axis.z), angle)
         return q
@@ -633,6 +976,156 @@ cdef class Quaternion:
         """
         return self.quaternion.getAngle()
 
+    def angle(self, Quaternion other):
+        """
+        Returns the angle between this quaternion and the other. 
+        """
+        return self.quaternion.angle(other.quaternion[0])
+
+
+cdef class Matrix3x3:
+    """
+    A 3x3 matrix. This class is loosely a wrapper around btMatrix3x3.
+    """
+    
+    cdef btMatrix3x3 *thisptr
+    CachedIdentityMatrix = None
+    
+    @classmethod
+    def getIdentity(cls):
+        if Matrix3x3.CachedIdentityMatrix is None:
+            Matrix3x3.CachedIdentityMatrix = Matrix3x3() 
+        return Matrix3x3.CachedIdentityMatrix
+            
+    
+    def __cinit__(self, *args):
+        """
+        The constructor has three different forms:
+
+            Matrix3x3(): returns a new 3x3 identity matrix.
+            Matrix3x3(Quaternion): returns a new 3x3 matrix that represents the
+                                   same rotation as the given quaternion.
+            Matrix3x3(9 scalars): returns a new 3x3 matrix with the given
+                                  values (in row-major form).
+            
+        """
+        cdef Quaternion q
+        cdef btScalar xx, xy, xz, yx, yy, yz, zx, zy, zz
+        if len(args) == 0:
+            self.thisptr = new btMatrix3x3()
+            self.thisptr.setIdentity()
+        elif len(args) == 1:
+            q = args[0]
+            self.thisptr = new btMatrix3x3(q.quaternion[0])
+        else:
+            assert len(args) == 9
+            xx, xy, xz, yx, yy, yz, zx, zy, zz = args
+            self.thisptr = new btMatrix3x3(xx, xy, xz, yx, yy, yz, zx, zy, zz)
+    
+    
+    def getColumn(self, int column):
+        """
+        Returns a vector representing the given column of this matrix.
+        Changes to the vector will not be reflected in the matrix.
+        """
+        cdef btVector3 v = self.thisptr.getColumn(column)
+        return Vector3(v.getX(), v.getY(), v.getZ())
+        
+
+    def getRow(self, int row):
+        """
+        Returns a vector representing the given row of this matrix.
+        Changes to the vector will not be reflected in the matrix,
+        but this will change in time.
+        """
+        cdef btVector3 v = self.thisptr.getRow(row)
+        return Vector3(v.getX(), v.getY(), v.getZ())        
+
+    
+    def setValue(self, btScalar xx, btScalar xy, btScalar xz,
+                       btScalar yx, btScalar yy, btScalar yz,
+                       btScalar zx, btScalar zy, btScalar zz):
+        """
+        Sets values in row-major form.
+        """
+        self.thisptr.setValue(xx, xy, xz, yx, yy, yz, zx, zy, zz)
+
+    
+    def setRotation(self, Quaternion rotation):
+        self.thisptr.setRotation(rotation.quaternion[0])
+    
+    
+    def setEulerYPR(self, btScalar yaw, btScalar pitch, btScalar roll):
+        self.thisptr.setEulerYPR(yaw, pitch, roll)
+    
+    
+    def setEulerZYX(self, btScalar x, btScalar y, btScalar z):
+        self.thisptr.setEulerZYX(x, y, z)
+        
+        
+    def setIdentity(self):
+        self.thisptr.setIdentity()
+    
+    
+    def getRotation(self):
+        cdef Quaternion rotation = Quaternion()
+        self.thisptr.getRotation(rotation.quaternion[0])
+        return rotation
+    
+    
+    def getEulerYPR(self):
+        cdef btScalar yaw, pitch, roll
+        self.thisptr.getEulerYPR(yaw, pitch, roll)
+        return yaw, pitch, roll
+    
+    
+    def getEulerZYX(self, int solutionNumber=1):
+        cdef btScalar x, y, z
+        self.thisptr.getEulerZYX(x, y, z, solutionNumber)
+        return x, y, z
+
+
+    def scaled(self, Vector3 scale):
+        cdef Matrix3x3 scaledMatrix = Matrix3x3()
+        scaledMatrix.thisptr[0] = self.thisptr.scaled(btVector3(scale.x, scale.y, scale.z))
+        return scaledMatrix
+    
+    
+    def determinant(self):
+        return self.thisptr.determinant()
+        
+        
+    def adjoint(self):
+        cdef Matrix3x3 m = Matrix3x3()
+        m.thisptr[0] = self.thisptr.adjoint()
+        return m
+
+    
+    def absolute(self):
+        """
+        Returns a copy of this matrix whose values are the absolute values of
+        those in this matrix.
+        """
+        cdef Matrix3x3 m = Matrix3x3()
+        m.thisptr[0] = self.thisptr.absolute()
+        return m
+        
+        
+    def transpose(self):
+        """
+        Returns a copy of this matrix whose values are the absolute values of
+        those in this matrix.
+        """
+        cdef Matrix3x3 m = Matrix3x3()
+        m.thisptr[0] = self.thisptr.transpose()
+        return m
+        
+        
+    def inverse(self):
+        cdef Matrix3x3 m = Matrix3x3()
+        m.thisptr[0] = self.thisptr.inverse()
+        return m
+                        
 
 
 cdef class CollisionShape:
@@ -644,6 +1137,10 @@ cdef class CollisionShape:
     """
     cdef btCollisionShape *thisptr
 
+    def calculateLocalInertia(self, btScalar mass):
+        cdef btVector3 *inertia = new btVector3(0, 0, 0)
+        self.thisptr.calculateLocalInertia(mass, inertia[0])
+        return Vector3(inertia.getX(), inertia.getY(), inertia.getZ())
 
     def __dealloc__(self):
         del self.thisptr
@@ -687,6 +1184,10 @@ cdef class BoxShape(ConvexShape):
             btVector3(boxHalfExtents.x, boxHalfExtents.y, boxHalfExtents.z))
 
 
+    def getHalfExtentsWithoutMargin(self):
+        cdef btVector3 v = (<btBoxShape*>self.thisptr).getHalfExtentsWithoutMargin()
+        return Vector3(v.getX(), v.getY(), v.getZ())
+
 
 cdef class SphereShape(ConvexShape):
     """
@@ -715,18 +1216,6 @@ cdef class CapsuleShape(ConvexShape):
     """
     def __cinit__(self, btScalar radius, btScalar height):
         self.thisptr = new btCapsuleShape(radius, height)
-
-
-
-cdef class CapsuleShapeZ(CapsuleShape):
-    """
-    A CapsuleShapeZ is a capsule around the Z axis.  A capsule is a cylinder with
-    a sphere on each end.
-
-    This class is a wrapper around btCapsuleShape.Z
-    """
-    def __cinit__(self, btScalar radius, btScalar height):
-        self.thisptr = new btCapsuleShapeZ(radius, height)
 
 
 
@@ -952,10 +1441,9 @@ cdef class BvhTriangleMeshShape(ConvexShape):
     """
     cdef StridingMeshInterface stride
 
-    def __init__(self, StridingMeshInterface mesh not None):
+    def __init__(self, StridingMeshInterface mesh not None, bool buildBvh=True):
         self.stride = mesh
-        self.thisptr = new btBvhTriangleMeshShape(mesh.thisptr, True, True)
-
+        self.thisptr = new btBvhTriangleMeshShape(mesh.thisptr, True, buildBvh)
 
     def buildOptimizedBvh(self):
         """
@@ -988,10 +1476,13 @@ cdef class Transform:
     """
     cdef btTransform *thisptr
 
-    def __cinit__(self):
+    def __cinit__(self, Vector3 origin=None, Quaternion rotation=None):
         self.thisptr = new btTransform()
         self.thisptr.setIdentity()
-
+        if origin is not None:
+            self.setOrigin(origin)
+        if rotation is not None:
+            self.setRotation(rotation)
 
     def __dealloc__(self):
         del self.thisptr
@@ -1034,6 +1525,37 @@ cdef class Transform:
         Set this Transform to be the identity.
         """
         self.thisptr.setIdentity()
+
+    def getOpenGLMatrix(self):
+        """
+        Returns an array of floats in row-major form, suitable for use with
+        the OpenGL function glMultMatrixf.
+        """
+        cdef numpy.ndarray arr = numpy.ndarray((16,), dtype=numpy.float32)
+        cdef btScalar* z = <btScalar*> arr.data
+        self.thisptr.getOpenGLMatrix(z)
+        return arr
+        
+        
+    def getBasis(self):
+        """
+        Returns the basis matrix for the rotation.
+        """
+        cdef Matrix3x3 basis = Matrix3x3()
+        basis.thisptr[0] = self.thisptr.getBasis()
+        return basis
+   
+cdef class BroadphaseProxy:
+    """
+    A BroadphaseProxy stores collision shape type information, collision filter
+    information and a client object, typically a btCollisionObject or btRigidBody.
+    """
+
+    cdef btBroadphaseProxy *thisptr
+   
+    def __cinit__(self):
+        self.thisptr = NULL     
+
 
 
 ACTIVE_TAG = _ACTIVE_TAG
@@ -1108,6 +1630,19 @@ cdef class CollisionObject:
         self._shape = collisionShape
 
 
+    def getInterpolationWorldTransform(self):
+        """
+        Get a copy of the interpolated (inter-timestep) transformation for this
+        CollisionObject as a Transform instance. This transform is calculated
+        by interpolating between two physically-calculated transformations
+        based on the current time, and is thus suitable for displaying graphics
+        smoothly.
+        """
+        cdef Transform transform = Transform()
+        transform.thisptr[0] = self.thisptr.getInterpolationWorldTransform()
+        return transform
+                
+
     def getWorldTransform(self):
         """
         Get a copy of the transformation for this CollisionObject as a Transform
@@ -1124,6 +1659,23 @@ cdef class CollisionObject:
         Replace the transformation for this CollisionObject.
         """
         self.thisptr.setWorldTransform(transform.thisptr[0])
+
+
+    def setContactProcessingThreshold(self, btScalar contactProcessingThreshold):
+        """
+        Set the distance after which the constraint solver can discard solving contacts.
+        """
+        self.thisptr.setContactProcessingThreshold(contactProcessingThreshold)
+
+
+    def getContactProcessingThreshold(self):
+        return self.thisptr.getContactProcessingThreshold()
+
+
+    def getBroadphaseHandle(self):
+        cdef BroadphaseProxy proxy = BroadphaseProxy()
+        proxy.thisptr = self.thisptr.getBroadphaseHandle()
+        return proxy        
 
 
     def getActivationState(self):
@@ -1230,7 +1782,8 @@ cdef class RigidBody(CollisionObject):
     def __init__(self,
                  MotionState motion = None,
                  CollisionShape shape = None,
-                 btScalar mass = 0.0):
+                 btScalar mass = 0.0,
+                 Vector3 localInertia = None):
         if motion is None:
             motion = DefaultMotionState()
         if shape is None:
@@ -1247,6 +1800,11 @@ cdef class RigidBody(CollisionObject):
         # calculated.
         if mass != 0.0:
             shape.thisptr.calculateLocalInertia(mass, inertia)
+
+        if localInertia is None:
+            shape.thisptr.calculateLocalInertia(mass, inertia)
+        else:
+            inertia = btVector3(localInertia.x, localInertia.y, localInertia.z)
 
         cdef btRigidBodyConstructionInfo* info
         info = new btRigidBodyConstructionInfo(
@@ -1475,6 +2033,63 @@ cdef class RigidBody(CollisionObject):
         cdef btVector3 pos = btVector3(
             relativePosition.x, relativePosition.y, relativePosition.z)
         body.applyImpulse(impulse, pos)
+    
+    def applyTorque(self, Vector3 t not None):
+        """
+        Apply torque to this RigidBody.
+        """
+        (<btRigidBody*>self.thisptr).applyTorque(btVector3(t.x, t.y, t.z))
+
+
+    def applyTorqueImpulse(self, Vector3 ti not None):
+        """
+        Apply a torque impulse to this RigidBody.
+        """
+        (<btRigidBody*>self.thisptr).applyTorqueImpulse(btVector3(ti.x, ti.y, ti.z))
+
+
+    def setCenterOfMassTransform(self, Transform trans not None):
+        """
+        Set the transform that describes the center of mass of this body.
+        """
+        (<btRigidBody*>self.thisptr).setCenterOfMassTransform(trans.thisptr[0])
+
+
+    def getCenterOfMassTransform(self):
+        """
+        Returns a Transform that describes the center of mass of this body.
+        """
+        cdef Transform transform = Transform()
+        transform.thisptr[0] = (<btRigidBody*>self.thisptr).getCenterOfMassTransform()
+        return transform    
+
+
+    def setAngularVelocity(self, Vector3 velocity not None):
+        """
+        Change the angular velocity of this RigidBody for at least a single
+        simulation step.  It is unspecified whether the change will persist for
+        more than one simulation step.  For reliable and reproducable results,
+        you must set this before each simulation tick.
+        """
+        (<btRigidBody*>self.thisptr).setAngularVelocity(
+            btVector3(velocity.x, velocity.y, velocity.z))
+    
+    
+    def getAngularVelocity(self):
+        """
+        Returns the instantaneous angular velocity of this body as a Vector3.
+        """
+        cdef btVector3 velocity = (<btRigidBody*>self.thisptr).getAngularVelocity()
+        return Vector3(velocity.getX(), velocity.getY(), velocity.getZ())
+
+    
+    def getOrientation(self):
+        """
+        Returns the orientation of this object (world-space).
+        """
+        cdef Quaternion orientation = Quaternion()
+        orientation.quaternion[0] = (<btRigidBody*>self.thisptr).getOrientation()
+        return orientation
 
 
 
@@ -1548,7 +2163,21 @@ cdef class PairCachingGhostObject(CollisionObject):
      def __init__(self):
          self.thisptr = new btPairCachingGhostObject()
 
+cdef class CompoundShape(CollisionShape):
+    """
+    A compound shape ties a number of transformed collision shapes together.
+    """
 
+    def __init__(self, bool enableDynamicAabbTree=True):
+        self.thisptr = new btCompoundShape(enableDynamicAabbTree)
+
+    def addChildShape(self, Transform localTransform not None, CollisionShape shape):    
+        cdef btCompoundShape* cs = <btCompoundShape*>self.thisptr
+        cs.addChildShape(localTransform.thisptr[0], shape.thisptr)
+        
+    def removeChildShape(self, CollisionShape shape):
+        cdef btCompoundShape* cs = <btCompoundShape*>self.thisptr
+        cs.removeChildShape(shape.thisptr)
 
 cdef class KinematicCharacterController(CharacterControllerInterface):
     """
@@ -1633,7 +2262,6 @@ cdef class OverlappingPairCache:
         new btGhostPairCallback.
         """
         self.thisptr.setInternalGhostPairCallback(new btGhostPairCallback())
-
 
 
 cdef class HashedOverlappingPairCache(OverlappingPairCache):
@@ -1731,7 +2359,6 @@ cdef class SequentialImpulseConstraintSolver(ConstraintSolver):
         self.thisptr = new btSequentialImpulseConstraintSolver()
 
 
-
 cdef class Collision:
     """
     A Collision has information about a single collision detected during a sweep test
@@ -1741,7 +2368,6 @@ cdef class Collision:
     cdef public Vector3 collision_normal
     cdef public int triangle_index
     cdef public CollisionObject collision_object
-
 
 
 cdef class CollisionWorld:
@@ -1853,7 +2479,6 @@ cdef class CollisionWorld:
         """
         self.thisptr.updateSingleAabb(collisionObject.thisptr)
 
-
     cdef __collisionResultsToList(self, PyBulletCollisionResults *results):
         cdef PyBulletCollision c_collision
         cdef Collision py_collision
@@ -1903,6 +2528,12 @@ cdef class CollisionWorld:
         finally:
             del results
 
+    def getDispatcher(self):
+        """
+        Returns the CollisionDispatcher that this world uses.
+        """
+        return <CollisionDispatcher>self.dispatcher
+
 
     def rayTest(self, Vector3 from_world, Vector3 to_world):
         cdef PyBulletCollisionResults *results = new PyBulletCollisionResults()
@@ -1928,17 +2559,40 @@ cdef class DynamicsWorld(CollisionWorld):
     This class is a wrapper around btDynamicsWorld.
     """
     cdef list _rigidBodies
+    cdef list _constraints
 
     def __init__(self,
                  CollisionDispatcher dispatcher = None,
                  BroadphaseInterface broadphase = None):
         CollisionWorld.__init__(self, dispatcher, broadphase)
         self._rigidBodies = []
+        self._constraints = []
 
-
-    def addRigidBody(self, RigidBody body not None, collision_filter_group=1, collision_filter_mask=-1):
+    def addConstraint(self, TypedConstraint constraint, bool disableCollisionsBetweenLinkedBodies=False):
         """
-        Add a new RigidBody to this DynamicsWorld.
+        Add a new constraint to this DynamicsWorld.
+        """
+        cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
+        world.addConstraint(constraint.thisptr, disableCollisionsBetweenLinkedBodies)
+        self._constraints.append(constraint)
+
+
+    def removeConstraint(self, TypedConstraint constraint):
+        """
+        Remove a constraint from this DynamicsWorld.
+        """
+        cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
+        self._constraints.remove(constraint)
+        world.removeConstraint(constraint.thisptr)
+
+
+    def addRigidBody(self, RigidBody body not None, short int collision_filter_group=1, short int collision_filter_mask=-1):
+        """
+        Add a new RigidBody to this DynamicsWorld. Optionally specifying a collisionFilterGroup and collisionFilterMask for 
+        the RigidBody, if neither of the two parameters are not specified or 0, the default single parameter method is invoked.
+        Only specify a collisionFilterGroup and collisionFilterMask if you require collisionFiltering.
+        This was implemented in this way as Python does not support overloading in the same manner as C++, it is not clear if
+        this is the best pattern to use to handle the conflict faced when interfacing these two languages.
         """
         cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
         world.addRigidBody(<btRigidBody*>body.thisptr, collision_filter_group, collision_filter_mask)
@@ -1994,7 +2648,7 @@ cdef class DiscreteDynamicsWorld(DynamicsWorld):
         if solver is None:
             solver = SequentialImpulseConstraintSolver()
         if broadphase is None:
-            broadphase = AxisSweep3(Vector3(-100, -100, -100), Vector3(100, 100, 100))
+            broadphase = AxisSweep3(Vector3(-100, -100, -100), Vector3(100, 100, 100)) #this was fixed in trunk rev 32
 
         self.solver = solver
         self.thisptr = <btCollisionWorld*>new btDiscreteDynamicsWorld(
@@ -2047,3 +2701,1017 @@ cdef class DiscreteDynamicsWorld(DynamicsWorld):
         """
         cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
         return world.stepSimulation(timeStep, maxSubSteps, fixedTimeStep)
+
+cdef class VehicleRaycasterResult:
+    """ An internal class used by the raycast vehicle. """
+    
+    cdef btVehicleRaycasterResult *thisptr
+    
+    def __init__(self):
+        self.thisptr = new btVehicleRaycasterResult()
+        
+    def __dealloc__(self):
+        del self.thisptr
+
+    property hitPointInWorld:
+        def __get__(self):
+            return Vector3(self.thisptr.m_hitPointInWorld.getX(),
+                           self.thisptr.m_hitPointInWorld.getY(), 
+                           self.thisptr.m_hitPointInWorld.getZ())                               
+    
+    property hitNormalInWorld:
+        def __get__(self):
+            return Vector3(self.thisptr.m_hitNormalInWorld.getX(),
+                           self.thisptr.m_hitNormalInWorld.getY(), 
+                           self.thisptr.m_hitNormalInWorld.getZ())   
+            
+    property distFraction:
+        def __get__(self):
+            return self.thisptr.m_distFraction
+
+
+
+cdef class VehicleRaycaster:
+    """ A vehicle raycaster simply casts rays down from a vehicle
+        to stop it from colliding with other world bodies.
+        Used by the RaycastVehicle. """
+
+    cdef btVehicleRaycaster *thisptr
+
+    def __dealloc__(self):
+        del self.thisptr
+
+
+
+cdef class DefaultVehicleRaycaster(VehicleRaycaster):
+    """ Concrete class defining the Vehicle Raycaster. """
+
+    cdef DynamicsWorld world
+
+    def __cinit__(self, DynamicsWorld world):
+        self.thisptr = new btDefaultVehicleRaycaster((<btDynamicsWorld*>world.thisptr))
+        self.world = world
+
+    def castRay(self, fromVector, toVector):
+        """ Casts a ray and returns a VehicleRaycaster.Result object. """
+        cdef btVector3 _fromVector = btVector3(fromVector.x, fromVector.y, fromVector.z)
+        cdef btVector3 _toVector = btVector3(toVector.x, toVector.y, toVector.z)        
+        cdef VehicleRaycasterResult result = VehicleRaycasterResult()
+        (<btDefaultVehicleRaycaster*>self.thisptr).castRay(_fromVector, _toVector, result.thisptr[0])
+        return result
+        
+        
+
+cdef class RaycastInfo:
+    """ An internal class used by the raycast vehicle. """
+    
+    cdef btRaycastInfo *thisptr
+    
+    def __cinit__(self):
+        self.thisptr = new btRaycastInfo()
+        
+    def __dealloc__(self):
+        del self.thisptr
+        
+    property contactNormalWS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_contactNormalWS.getX(),
+                           self.thisptr.m_contactNormalWS.getY(), 
+                           self.thisptr.m_contactNormalWS.getZ()) 
+            
+    property contactPointWS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_contactPointWS.getX(),
+                           self.thisptr.m_contactPointWS.getY(), 
+                           self.thisptr.m_contactPointWS.getZ()) 
+                             
+    property hardPointWS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_hardPointWS.getX(),
+                           self.thisptr.m_hardPointWS.getY(), 
+                           self.thisptr.m_hardPointWS.getZ()) 
+                             
+    property wheelDirectionWS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_wheelDirectionWS.getX(),
+                           self.thisptr.m_wheelDirectionWS.getY(), 
+                           self.thisptr.m_wheelDirectionWS.getZ()) 
+                               
+    property wheelAxleWS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_wheelAxleWS.getX(),
+                           self.thisptr.m_wheelAxleWS.getY(), 
+                           self.thisptr.m_wheelAxleWS.getZ()) 
+                                       
+    property suspensionLength:
+        def __get__(self):
+            return self.thisptr.m_suspensionLength
+
+    property isInContact:
+        def __get__(self):
+            return self.thisptr.m_isInContact                               
+
+    # TODO void * m_groundObject
+
+
+
+cdef class WheelInfo:
+    """
+    Describes a wheel on a car. Used in the RaycastVehicle, and perhaps elsewhere.
+    
+    Note that the C++ class WheelInfoConstructionInfo has been folded into
+    this one as keyword arguments into the initialiser. Any members of that class
+    can be passed into it, for example::
+    
+        wheelInfo = WheelInfo(maxSuspensionTravelCm=10.0, wheelRadius=25.0, wheelDirectionCS=Vector3(1, 0, 0))
+        
+    As the C++ structure WheelInfoConstructionInfo provides no default values,
+    neither does pyBullet. It is recommended that you inherit from WheelInfo 
+    to provide the defaults that you need.
+    """
+
+    cdef btWheelInfo *thisptr
+    
+    def __cinit__(self, chassisConnectionCS=Vector3(0,0,0), wheelDirectionCS=Vector3(0,0,0), wheelAxleCS=Vector3(0,0,0),
+                        suspensionRestLength=1.0, maxSuspensionTravelCm=1.0, wheelRadius=1.0,
+                        suspensionStiffness=1.0, wheelsDampingCompression=1.0, wheelsDampingRelaxation=1.0,
+                        frictionSlip=0.0, maxSuspensionForce=0.0, bIsFrontWheel=False):
+                       
+        cdef btWheelInfoConstructionInfo* cons = new btWheelInfoConstructionInfo()
+        cons.m_chassisConnectionCS = btVector3(chassisConnectionCS.x, chassisConnectionCS.y, chassisConnectionCS.z)
+        cons.m_wheelDirectionCS = btVector3(wheelDirectionCS.x, wheelDirectionCS.y, wheelDirectionCS.z)
+        cons.m_wheelAxleCS = btVector3(wheelAxleCS.x, wheelAxleCS.y, wheelAxleCS.z)
+        cons.m_suspensionRestLength = suspensionRestLength
+        cons.m_maxSuspensionTravelCm = maxSuspensionTravelCm
+        cons.m_wheelRadius = wheelRadius
+        cons.m_suspensionStiffness = suspensionStiffness
+        cons.m_wheelsDampingCompression = wheelsDampingCompression
+        cons.m_wheelsDampingRelaxation = wheelsDampingRelaxation
+        cons.m_frictionSlip = frictionSlip
+        cons.m_maxSuspensionForce = maxSuspensionForce
+        cons.m_bIsFrontWheel = bIsFrontWheel
+        
+        self.thisptr = new btWheelInfo(cons[0])
+        del cons
+        
+        
+    def getSuspensionRestLength(self):
+        """ Get the length of the wheel's suspension at rest. """
+        return self.thisptr.getSuspensionRestLength()
+    
+    def updateWheel(self, RigidBody chassis, RaycastInfo raycastInfo):
+        """ """
+        self.thisptr.updateWheel((<btRigidBody*>chassis.thisptr)[0], raycastInfo.thisptr[0])
+        
+    property raycastInfo:
+        """  """
+        def __get__(self):
+            cdef RaycastInfo raycastInfo = RaycastInfo()
+            raycastInfo.thisptr[0] = self.thisptr.m_raycastInfo
+            return raycastInfo
+            
+    property worldTransform:
+        def __get__(self):
+            cdef Transform worldTransform = Transform()
+            worldTransform.thisptr[0] = self.thisptr.m_worldTransform
+            return worldTransform
+
+    property chassisConnectionPointCS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_chassisConnectionPointCS.getX(),
+                           self.thisptr.m_chassisConnectionPointCS.getY(), 
+                           self.thisptr.m_chassisConnectionPointCS.getZ()) 
+        def __set__(self, v):
+            self.thisptr.m_chassisConnectionPointCS = btVector3(v.x, v.y, v.z)
+            
+    property wheelDirectionCS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_wheelDirectionCS.getX(),
+                           self.thisptr.m_wheelDirectionCS.getY(), 
+                           self.thisptr.m_wheelDirectionCS.getZ()) 
+        def __set__(self, v):
+            self.thisptr.m_wheelDirectionCS = btVector3(v.x, v.y, v.z)
+                             
+    property wheelAxleCS:
+        def __get__(self):
+            return Vector3(self.thisptr.m_wheelAxleCS.getX(),
+                           self.thisptr.m_wheelAxleCS.getY(), 
+                           self.thisptr.m_wheelAxleCS.getZ()) 
+        def __set__(self, v):
+            self.thisptr.m_wheelAxleCS = btVector3(v.x, v.y, v.z)                         
+                           
+    property suspensionRestLength1:
+        def __get__(self):
+            return self.thisptr.m_suspensionRestLength1
+        def __set__(self, v):
+            self.thisptr.m_suspensionRestLength1 = v
+
+    property maxSuspensionTravelCm:
+        def __get__(self):
+            return self.thisptr.m_maxSuspensionTravelCm
+        def __set__(self, v):
+            self.thisptr.m_maxSuspensionTravelCm = v
+
+    property wheelsRadius:
+        def __get__(self):
+            return self.thisptr.m_wheelsRadius
+        def __set__(self, v):
+            self.thisptr.m_wheelsRadius = v
+
+    property suspensionStiffness:
+        def __get__(self):
+            return self.thisptr.m_suspensionStiffness
+        def __set__(self, v):
+            self.thisptr.m_suspensionStiffness = v
+
+    property wheelsDampingCompression:
+        def __get__(self):
+            return self.thisptr.m_wheelsDampingCompression
+        def __set__(self, v):
+            self.thisptr.m_wheelsDampingCompression = v
+
+    property wheelsDampingRelaxation:
+        def __get__(self):
+            return self.thisptr.m_wheelsDampingRelaxation
+        def __set__(self, v):
+            self.thisptr.m_wheelsDampingRelaxation = v
+
+    property frictionSlip:
+        def __get__(self):
+            return self.thisptr.m_frictionSlip
+        def __set__(self, v):
+            self.thisptr.m_frictionSlip = v
+
+    property steering:
+        def __get__(self):
+            return self.thisptr.m_steering
+        def __set__(self, v):
+            self.thisptr.m_steering = v
+
+    property rotation:
+        def __get__(self):
+            return self.thisptr.m_rotation
+        def __set__(self, v):
+            self.thisptr.m_rotation = v
+
+    property deltaRotation:
+        def __get__(self):
+            return self.thisptr.m_deltaRotation
+        def __set__(self, v):
+            self.thisptr.m_deltaRotation = v
+
+    property rollInfluence:
+        def __get__(self):
+            return self.thisptr.m_rollInfluence
+        def __set__(self, v):
+            self.thisptr.m_rollInfluence = v
+
+    property maxSuspensionForce:
+        def __get__(self):
+            return self.thisptr.m_maxSuspensionForce
+        def __set__(self, v):
+            self.thisptr.m_maxSuspensionForce = v
+            
+    property engineForce:
+        def __get__(self):
+            return self.thisptr.m_engineForce
+        def __set__(self, v):
+            self.thisptr.m_engineForce = v
+            
+    property brake:
+        def __get__(self):
+            return self.thisptr.m_brake
+        def __set__(self, v):
+            self.thisptr.m_brake = v
+            
+    property bIsFrontWheel:
+        def __get__(self):
+            return self.thisptr.m_bIsFrontWheel
+        def __set__(self, v):
+            self.thisptr.m_bIsFrontWheel = v            
+            
+    property clippedInvContactDotSuspension:
+        def __get__(self):
+            return self.thisptr.m_clippedInvContactDotSuspension
+        def __set__(self, v):
+            self.thisptr.m_clippedInvContactDotSuspension = v            
+            
+    property suspensionRelativeVelocity:
+        def __get__(self):
+            return self.thisptr.m_suspensionRelativeVelocity            
+        def __set__(self, v):
+            self.thisptr.m_suspensionRelativeVelocity = v            
+            
+    property wheelsSuspensionForce:
+        def __get__(self):
+            return self.thisptr.m_wheelsSuspensionForce
+        def __set__(self, v):
+            self.thisptr.m_wheelsSuspensionForce = v            
+            
+    property skidInfo:
+        def __get__(self):
+            return self.thisptr.m_skidInfo            
+        def __set__(self, v):
+            self.thisptr.m_skidInfo = v                     
+                           
+    # TODO this property void * m_clientInfo
+
+
+
+cdef class VehicleTuning:
+    """
+    Tuning parameters for the RaycastVehicle.
+    """
+
+    cdef btVehicleTuning *thisptr
+
+    def __cinit__(self):
+        self.thisptr = new btVehicleTuning()
+
+    def __dealloc__(self):
+        del self.thisptr
+
+    property suspensionStiffness:
+        def __get__(self):
+            return self.thisptr.m_suspensionStiffness
+        def __set__(self, value):
+            self.thisptr.m_suspensionStiffness = value    
+
+    property suspensionCompression:
+        def __get__(self):
+            return self.thisptr.m_suspensionCompression
+        def __set__(self, value):
+            self.thisptr.m_suspensionCompression = value    
+        
+    property suspensionDamping:
+        def __get__(self):
+            return self.thisptr.m_suspensionDamping
+        def __set__(self, value):
+            self.thisptr.m_suspensionDamping = value    
+        
+    property maxSuspensionTravelCm:
+        def __get__(self):
+            return self.thisptr.m_maxSuspensionTravelCm
+        def __set__(self, value):
+            self.thisptr.m_maxSuspensionTravelCm = value    
+
+    property frictionSlip:
+        def __get__(self):
+            return self.thisptr.m_frictionSlip
+        def __set__(self, value):
+            self.thisptr.m_frictionSlip = value    
+
+    property maxSuspensionForce:
+        def __get__(self):
+            return self.thisptr.m_maxSuspensionForce
+        def __set__(self, value):
+            self.thisptr.m_maxSuspensionForce = value    
+                  
+                  
+                  
+cdef class RaycastVehicle(ActionInterface):
+    """
+    The raycast vehicle is a simple n-wheeled vehicle that casts rays down from
+    wheel connection points to collide with other world bodies. As such, it is
+    not a physically-accurate simulation, but rather a simpler one that allows
+    for a more arcade-style feel.
+    
+    See demos/vehicledemo.py for a simple example of how to use this class.
+    """
+
+    cdef RigidBody chassis
+                      
+    def __cinit__(self, VehicleTuning tuning, RigidBody chassis, VehicleRaycaster raycaster):
+        self.thisptr = new btRaycastVehicle(tuning.thisptr[0], (<btRigidBody*>chassis.thisptr), raycaster.thisptr)        
+        self.chassis = chassis
+                      
+    def rayCast(self, WheelInfo wheelInfo):
+        return (<btRaycastVehicle*>self.thisptr).rayCast(wheelInfo.thisptr[0])
+
+    def resetSuspension(self):
+        (<btRaycastVehicle*>self.thisptr).resetSuspension()
+        
+    # XXX this function, apparently, does not even exist.
+    # http://www.ogre3d.org/addonforums/viewtopic.php?f=3&t=11787
+    #def setRaycastWheelInfo(self, wheelIndex, isInContact, hitPoint, hitNormal, depth):
+    #    cdef btVector3 _hitPoint = btVector3(hitPoint.x, hitPoint.y, hitPoint.z)
+    #    cdef btVector3 _hitNormal = btVector3(hitNormal.x, hitNormal.y, hitNormal.z)        
+    #    (<btRaycastVehicle*>self.thisptr).setRaycastWheelInfo(wheelIndex, isInContact, _hitPoint, _hitNormal, depth)
+    
+    def getWheelInfo(self, wheelIndex):
+        """ Returns the WheelInfo structure for the given wheel. """
+        cdef WheelInfo wheelInfo = WheelInfo()
+        wheelInfo.thisptr[0] = (<btRaycastVehicle*>self.thisptr).getWheelInfo(wheelIndex)
+        return wheelInfo
+
+    def getNumWheels(self):
+        return (<btRaycastVehicle*>self.thisptr).getNumWheels()    
+
+    def addWheel(self, connectionPointCS0, wheelDirectionCS0, wheelAxleCS, suspensionRestLength, wheelRadius, VehicleTuning tuning, isFrontWheel):
+        cdef btVector3 _connectionPointCS0 = btVector3(connectionPointCS0.x, connectionPointCS0.y, connectionPointCS0.z)
+        cdef btVector3 _wheelDirectionCS0 = btVector3(wheelDirectionCS0.x, wheelDirectionCS0.y, wheelDirectionCS0.z)      
+        cdef btVector3 _wheelAxleCS = btVector3(wheelAxleCS.x, wheelAxleCS.y, wheelAxleCS.z)  
+        
+        cdef WheelInfo wheelInfo = WheelInfo()
+        wheelInfo.thisptr[0] = (<btRaycastVehicle*>self.thisptr).addWheel(_connectionPointCS0, _wheelDirectionCS0, _wheelAxleCS, suspensionRestLength, wheelRadius, tuning.thisptr[0], isFrontWheel)
+        return wheelInfo
+
+    def getSteeringValue(self, wheelIndex):
+        return (<btRaycastVehicle*>self.thisptr).getSteeringValue(wheelIndex)
+
+    def setSteeringValue(self, steering, wheelIndex):
+        (<btRaycastVehicle*>self.thisptr).setSteeringValue(steering, wheelIndex)
+
+    def applyEngineForce(self, force, wheelIndex):
+        (<btRaycastVehicle*>self.thisptr).applyEngineForce(force, wheelIndex)
+
+    def setBrake(self, brake, wheelIndex):
+        (<btRaycastVehicle*>self.thisptr).setBrake(brake, wheelIndex)
+
+    def setPitchControl(self, pitch):
+        (<btRaycastVehicle*>self.thisptr).setPitchControl(pitch)
+
+    def getWheelTransformWS(self, wheelIndex):
+        """ Returns a Transform describing the wheel's transformation in world space. """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btRaycastVehicle*>self.thisptr).getWheelTransformWS(wheelIndex)
+        return t
+
+    def getChassisWorldTransform(self): 
+        """ Returns a Transform describing the chassis' transformation. """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btRaycastVehicle*>self.thisptr).getChassisWorldTransform()
+        return t 
+                
+    def updateWheelTransform(self, wheelIndex, interpolatedTransform=True):
+        (<btRaycastVehicle*>self.thisptr).updateWheelTransform(wheelIndex, interpolatedTransform)
+
+    def updateWheelTransformsWS(self, WheelInfo wheel, interpolatedTransform=True):
+        (<btRaycastVehicle*>self.thisptr).updateWheelTransformsWS(wheel.thisptr[0], interpolatedTransform)
+    
+    def updateVehicle(self, step):
+        (<btRaycastVehicle*>self.thisptr).updateVehicle(step)
+    
+    def updateSuspension(self, deltaTime):
+        (<btRaycastVehicle*>self.thisptr).updateSuspension(deltaTime)
+    
+    def updateFriction(self, timeStep):
+        (<btRaycastVehicle*>self.thisptr).updateFriction(timeStep)
+    
+    def getRigidBody(self):
+        return self.chassis
+    
+    def getForwardVector(self):    
+        """ Worldspace forward vector. """
+        cdef btVector3 forwardVector = (<btRaycastVehicle*>self.thisptr).getForwardVector()
+        return Vector3(forwardVector.getX(), forwardVector.getY(), forwardVector.getZ())
+    
+    def getCurrentSpeedKmHour(self):
+        """ Velocity of vehicle (positive if velocity vector has same direction as foward vector). """    
+        return (<btRaycastVehicle*>self.thisptr).getCurrentSpeedKmHour()
+    
+    def setCoordinateSystem(self, rightIndex, upIndex, forwardIndex):
+        (<btRaycastVehicle*>self.thisptr).setCoordinateSystem(rightIndex, upIndex, forwardIndex)
+    
+    def getRightAxis(self):
+        return (<btRaycastVehicle*>self.thisptr).getRightAxis()
+
+    def getUpAxis(self):
+        return (<btRaycastVehicle*>self.thisptr).getUpAxis()
+        
+    def getForwardAxis(self):
+        return (<btRaycastVehicle*>self.thisptr).getForwardAxis()        
+
+
+
+# FIXME create + inherit from TypedObject
+cdef class TypedConstraint:
+    """
+    This is the base class for all constraints.
+    """
+    
+    cdef btTypedConstraint* thisptr
+
+    def __dealloc__(self):
+        del self.thisptr
+
+
+    def getRigidBodyA(self):
+        cdef RigidBody rb = RigidBody()
+        rb.thisptr[0] = self.thisptr.getRigidBodyA()
+        return rb
+
+
+    def getRigidBodyB(self):
+        cdef RigidBody rb = RigidBody()
+        rb.thisptr[0] = self.thisptr.getRigidBodyB()
+        return rb
+
+
+    def getUserConstraintType(self):
+        return self.thisptr.getUserConstraintType()
+        
+        
+    def setUserConstraintType(self, int userConstraintType):
+        self.thisptr.setUserConstraintType(userConstraintType)
+        
+        
+    def getUserConstraintId(self):
+        return self.thisptr.getUserConstraintId()
+        
+        
+    def setUserConstraintId(self, int uid):
+        self.thisptr.setUserConstraintId(uid)
+
+
+    def getUid(self):
+        return self.thisptr.getUid()
+
+
+    def needsFeedback(self):
+        return self.thisptr.needsFeedback()
+        
+        
+    def enableFeedback(self, bool needsFeedback):
+        """
+        enableFeedback enables reading the applied linear and angular impulses.
+        Use getAppliedImpulse, getAppliedLinearImpulse and getAppliedAngularImpulse
+        to read feedback information.
+        """
+        self.thisptr.enableFeedback(needsFeedback)
+        
+        
+    def getAppliedImpulse(self):
+        """
+        Returns an estimated total applied impulse. 
+        """
+        return self.thisptr.getAppliedImpulse()
+        
+
+    def getConstraintType(self):
+        return self.thisptr.getConstraintType()
+
+    
+    
+cdef class Generic6DofConstraint(TypedConstraint):
+    """
+    A generic constraint with 6 possible degrees of freedom.
+    The first three degrees of freedom are linear (X, Y, Z), and then the
+    second three degrees of freedom are rotational (X, Y, Z).
+    """
+
+    def __init__(self, *args):
+        cdef RigidBody a, b
+        cdef Transform frameInA, frameInB
+        cdef bool useLinearReferenceFrameA, useLinearReferenceFrameB
+        if len(args) == 3:
+            b = args[0]
+            frameInB = args[1]
+            useLinearReferenceFrameB = args[2]
+            self.thisptr = new btGeneric6DofConstraint((<btRigidBody*>b.thisptr)[0], frameInB.thisptr[0],
+                useLinearReferenceFrameB)
+        else:
+            assert len(args) == 5
+            a = args[0]
+            b = args[1]
+            frameInA = args[2]
+            frameInB = args[3]
+            useLinearReferenceFrameA = args[4]
+            self.thisptr = new btGeneric6DofConstraint((<btRigidBody*>a.thisptr)[0], (<btRigidBody*>b.thisptr)[0],
+                frameInA.thisptr[0], frameInB.thisptr[0], useLinearReferenceFrameA)            
+
+
+    def calculateTransforms(self):
+        """
+        Calculates global transform of the offsets.
+        """
+        cdef Transform a = Transform()
+        cdef Transform b = Transform()
+        (<btGeneric6DofConstraint*>self.thisptr).calculateTransforms(a.thisptr[0], b.thisptr[1])
+        return a, b
+    
+    
+    def getCalculatedTransformA(self):
+        """
+        Returns the global transform of the offset for body A. 
+        """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btGeneric6DofConstraint*>self.thisptr).getCalculatedTransformA()
+        return t
+
+
+    def getCalculatedTransformB(self):
+        """
+        Returns the global transform of the offset for body B. 
+        """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btGeneric6DofConstraint*>self.thisptr).getCalculatedTransformB()
+        return t        
+    
+    
+    def getFrameOffsetA(self):
+        """
+        Returns the global transform of the offset for body A. 
+        """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btGeneric6DofConstraint*>self.thisptr).getFrameOffsetA()
+        return t
+
+
+    def getFrameOffsetB(self):
+        """
+        Returns the global transform of the offset for body B. 
+        """
+        cdef Transform t = Transform()
+        t.thisptr[0] = (<btGeneric6DofConstraint*>self.thisptr).getFrameOffsetB()
+        return t        
+
+    
+    def buildJacobian(self):
+        """ 
+        Performs Jacobian calculation, and also calculates angle differences and axis.
+        """
+        (<btGeneric6DofConstraint*>self.thisptr).buildJacobian()
+        
+        
+    def updateRHS(self, btScalar timeStep):
+        (<btGeneric6DofConstraint*>self.thisptr).updateRHS(timeStep)
+        
+
+    def getAxis(self, int axis_index):
+        """
+        Returns the rotation axis as a Vector3, in global coordinates.
+        N.B. Use axis_index in [4, 5, 6]
+        """
+        cdef btVector3 v = (<btGeneric6DofConstraint*>self.thisptr).getAxis(axis_index)
+        return Vector3(v.getX(), v.getY(), v.getZ())
+    
+    
+    def getAngle(self, int axis_index):
+        """
+        Returns the relative euler angle rotation of the given axis.
+        N.B. Use axis_index in [1, 2, 3]
+        """
+        return (<btGeneric6DofConstraint*>self.thisptr).getAngle(axis_index)
+        
+        
+    def getRelativePivotPosition(self, int axis_index):
+        """
+        Returns the relative position of the constraint pivot.
+        """
+        return (<btGeneric6DofConstraint*>self.thisptr).getRelativePivotPosition(axis_index)
+        
+
+    def testAngularLimitMotor(self, int axis_index):
+        """
+        Tests angular limit.
+        """
+        return (<btGeneric6DofConstraint*>self.thisptr).testAngularLimitMotor(axis_index)
+
+    
+    def setLinearLowerLimit(self, Vector3 linearLower):
+        (<btGeneric6DofConstraint*>self.thisptr).setLinearLowerLimit(
+            btVector3(linearLower.x, linearLower.y, linearLower.z))
+            
+
+    def setLinearUpperLimit(self, Vector3 linearUpper):
+        (<btGeneric6DofConstraint*>self.thisptr).setLinearUpperLimit(
+            btVector3(linearUpper.x, linearUpper.y, linearUpper.z))
+
+
+    def setAngularLowerLimit(self, Vector3 angularLower):
+        (<btGeneric6DofConstraint*>self.thisptr).setAngularLowerLimit(
+            btVector3(angularLower.x, angularLower.y, angularLower.z))
+            
+
+    def setAngularUpperLimit(self, Vector3 angularUpper):
+        (<btGeneric6DofConstraint*>self.thisptr).setAngularUpperLimit(
+            btVector3(angularUpper.x, angularUpper.y, angularUpper.z))
+       
+
+    def getRotationalLimitMotor(self, int index):
+        '''
+        index is a specifier mapping to a motor in the m_angularLimits array in
+        btGeneric6DofConstraint.h.
+
+        It can be a value between 0 and 2, inclusive, and maps to x,y,z.
+        '''
+        # TODO without the creation of the extra btRotationalLimitMotor
+        cdef RotationalLimitMotor rlm = RotationalLimitMotor()
+        del rlm.thisptr
+        rlm.thisptr = (<btGeneric6DofConstraint*>self.thisptr).getRotationalLimitMotor(index)
+        rlm.ownsptr = False
+        return rlm
+        
+
+    # TODO
+    '''
+    def getTranslationalLimitMotor(self, int index):
+        # TODO without the creation of the extra btTranslationalLimitMotor
+        TranslationalLimitMotor tlm = TranslationalLimitMotor()
+        del tlm.thisptr
+        tlm.thisptr = (<btGeneric6DofConstraint*>self.thisptr).getTranslationalLimitMotor(index)
+        return tlm
+    '''
+
+    def setLimit(self, int axis, btScalar lo, btScalar hi):
+        (<btGeneric6DofConstraint*>self.thisptr).setLimit(axis, lo, hi)
+
+    
+    def isLimited(self, int limitIndex):
+        """
+        Test limit.
+        """
+        return (<btGeneric6DofConstraint*>self.thisptr).isLimited(limitIndex)
+
+
+    def calcAnchorPos(self):
+        (<btGeneric6DofConstraint*>self.thisptr).calcAnchorPos()
+
+
+    def getUseFrameOffset(self):
+        return (<btGeneric6DofConstraint*>self.thisptr).getUseFrameOffset()
+        
+        
+    def setUseFrameOffset(self, bool frameOffsetOnOff):
+        (<btGeneric6DofConstraint*>self.thisptr).setUseFrameOffset(frameOffsetOnOff)
+    
+   
+    def setParam(self, int num, btScalar value, int axis=-1):
+        """
+        Overrides the default global value of a parameter (such as ERP or CFM).
+        If axis is not specified, sets the parameter on all axes.
+        """
+        (<btGeneric6DofConstraint*>self.thisptr).setParam(num, value, axis)
+
+    
+    def getParam(self, int num, int axis=-1):
+        return (<btGeneric6DofConstraint*>self.thisptr).getParam(num, axis)
+
+        
+    
+cdef class Generic6DofSpringConstraint(Generic6DofConstraint):
+    """
+    The Generic 6 degrees-of-freedom spring constraint adds the ability to
+    add spring motors to any translational or rotational degree of freedom.
+    
+    From the Bullet docs:
+    DOF index used in enableSpring() and setStiffness() means:
+        0: translation X
+        1: translation Y
+        2: translation Z
+        3: rotation X (3rd Euler rotational around new position of X axis, range [-PI+epsilon, PI-epsilon] )
+        4: rotation Y (2nd Euler rotational around new position of Y axis, range [-PI/2+epsilon, PI/2-epsilon] )
+        5: rotation Z (1st Euler rotational around Z axis, range [-PI+epsilon, PI-epsilon] )
+    """
+    
+    def __init__(self, RigidBody a, RigidBody b, Transform frameInA, Transform frameInB, bool useLinearReferenceFrameA):
+        self.thisptr = new btGeneric6DofSpringConstraint((<btRigidBody*>a.thisptr)[0], (<btRigidBody*>b.thisptr)[0],
+            frameInA.thisptr[0], frameInB.thisptr[0], useLinearReferenceFrameA)
+    
+    def enableSpring(self, int index, bool onOff):
+        (<btGeneric6DofSpringConstraint*>self.thisptr).enableSpring(index, onOff)
+    
+    def setStiffness(self, int index, btScalar stiffness):
+        (<btGeneric6DofSpringConstraint*>self.thisptr).setStiffness(index, stiffness)
+    
+    def setDamping(self, int index, btScalar damping):
+        (<btGeneric6DofSpringConstraint*>self.thisptr).setDamping(index, damping)
+    
+    def setEquilibriumPoint(self, index=None):
+        """
+        Sets the equilibrium points of this constraint.
+        If index is None, sets for all. Otherwise, only sets the constraint for
+        the given degree of freedom. 
+        """
+        if index is None:
+            (<btGeneric6DofSpringConstraint*>self.thisptr).setEquilibriumPoint()
+        else:
+            (<btGeneric6DofSpringConstraint*>self.thisptr).setEquilibriumPoint(index)            
+    
+cdef class Hinge2Constraint(Generic6DofSpringConstraint):
+    """
+    The hinge-2 constraint has its origins in ODE, and can be used to effectively
+    the constraint between a car body and its wheels. It models a springy suspension
+    and 2 axes of rotational freedom.
+    
+    In terms of a vehicle simulation, the first axis re-points the wheel (i.e.
+    steers the wheel, e.g. the Y axis). The second axis is the drive axis (i.e.
+    moves the wheel forward or backward on its current path).
+    """
+    
+    def __init__(self, RigidBody a, RigidBody b, Vector3 anchor, Vector3 axis1, Vector3 axis2):
+        cdef btVector3 *_anchor = new btVector3(anchor.x, anchor.y, anchor.z)
+        cdef btVector3 *_axis1 = new btVector3(axis1.x, axis1.y, axis1.z)
+        cdef btVector3 *_axis2 = new btVector3(axis2.x, axis2.y, axis2.z)          
+        self.thisptr = new btHinge2Constraint(
+            (<btRigidBody*>a.thisptr)[0],
+            (<btRigidBody*>b.thisptr)[0],
+            _anchor[0], _axis1[0], _axis2[0])
+        del _anchor
+        del _axis1
+        del _axis2
+
+    def getAnchor(self):
+        cdef btVector3 v = (<btHinge2Constraint*>self.thisptr).getAnchor()
+        return Vector3(v.getX(), v.getY(), v.getZ())
+
+    def getAnchor2(self):
+        cdef btVector3 v = (<btHinge2Constraint*>self.thisptr).getAnchor2()
+        return Vector3(v.getX(), v.getY(), v.getZ())
+
+    def getAxis1(self):
+        cdef btVector3 v = (<btHinge2Constraint*>self.thisptr).getAxis1()
+        return Vector3(v.getX(), v.getY(), v.getZ())
+
+    def getAxis2(self):
+        cdef btVector3 v = (<btHinge2Constraint*>self.thisptr).getAxis2()
+        return Vector3(v.getX(), v.getY(), v.getZ())
+
+    def getAngle1(self):
+        return (<btHinge2Constraint*>self.thisptr).getAngle1()
+        
+    def getAngle2(self):
+        return (<btHinge2Constraint*>self.thisptr).getAngle2()
+        
+    def setUpperLimit(self, btScalar maximumAngle):
+        (<btHinge2Constraint*>self.thisptr).setUpperLimit(maximumAngle)
+
+    def setLowerLimit(self, btScalar minimumAngle):
+        (<btHinge2Constraint*>self.thisptr).setUpperLimit(minimumAngle)
+                
+
+cdef class Point2PointConstraint(Generic6DofSpringConstraint):
+    """A constraint between two rigid bodies, each with a pivot point that describes
+    the virtual 'ballsocket' location in local space.
+    
+    pivotInA and pivotInB are the points around which the rotation occurs.
+    pivotInA is a Vector3 from the perspective of rigidBody a's local coordinates 
+    pivotInB is a Vector3 from the perspective of rigidBody b's local coordinates 
+    """
+    
+    def __init__(self, RigidBody a, RigidBody b, Vector3 pivotInA, Vector3 pivotInB):
+        cdef btVector3 *_pivotInA = new btVector3(pivotInA.x, pivotInA.y, pivotInA.z)
+        cdef btVector3 *_pivotInB = new btVector3(pivotInB.x, pivotInB.y, pivotInB.z)          
+        self.thisptr = new btPoint2PointConstraint(
+            (<btRigidBody*>a.thisptr)[0],
+            (<btRigidBody*>b.thisptr)[0],
+            _pivotInA[0], _pivotInB[0])
+        del _pivotInA
+        del _pivotInB
+
+    def setPivotA(self, Vector3 pivotA):
+        (<btPoint2PointConstraint*>self.thisptr).setPivotA(btVector3(pivotA.x, pivotA.y, pivotA.z))
+
+    def setPivotB(self, Vector3 pivotB):
+        (<btPoint2PointConstraint*>self.thisptr).setPivotB(btVector3(pivotB.x, pivotB.y, pivotB.z))
+
+    def getPivotInA(self):
+        cdef btVector3 v = (<btPoint2PointConstraint*>self.thisptr).getPivotInA()
+        return Vector3(v.getX(), v.getY(), v.getY())
+        
+    def getPivotInB(self):
+        cdef btVector3 v = (<btPoint2PointConstraint*>self.thisptr).getPivotInB()
+        return Vector3(v.getX(), v.getY(), v.getY())
+        
+    
+# TODO TranslationalLimitMotor    
+cdef class RotationalLimitMotor:
+
+    cdef btRotationalLimitMotor *thisptr
+    cdef bool ownsptr
+    
+    def __cinit__(self):
+        self.thisptr = new btRotationalLimitMotor()
+        self.ownsptr = True
+    
+        
+    def __dealloc__(self):
+        if self.ownsptr:
+            del self.thisptr
+        
+    
+    def isLimited(self):
+        return self.thisptr.isLimited()
+        
+        
+    def needApplyTorques(self):
+        """
+        Returns True iff correction is needed (based on the ERP parameters).
+        """        
+        return self.thisptr.needApplyTorques()
+        
+        
+    def testLimitValue(self, btScalar test_value):
+        return self.thisptr.testLimitValue(test_value)
+
+    # TODO figure out if we need to implement solveAngularLimits.
+    # Looks like it is called internally by the engine.
+
+    property loLimit:
+        def __get__(self):
+            return self.thisptr.m_loLimit
+        def __set__(self, value):
+            self.thisptr.m_loLimit = value
+
+    property hiLimit:
+        def __get__(self):
+            return self.thisptr.m_hiLimit
+        def __set__(self, value):
+            self.thisptr.m_hiLimit = value
+
+    property targetVelocity:
+        def __get__(self):
+            return self.thisptr.m_targetVelocity
+        def __set__(self, value):
+            self.thisptr.m_targetVelocity = value
+
+    # according to one source, this is apparently not a force
+    # but in fact angular momentum (Newton-metre-seconds)
+    property maxMotorForce:
+        def __get__(self):
+            return self.thisptr.m_maxMotorForce
+        def __set__(self, value):
+            self.thisptr.m_maxMotorForce = value
+
+    property maxLimitForce:
+        def __get__(self):
+            return self.thisptr.m_maxLimitForce
+        def __set__(self, value):
+            self.thisptr.m_maxLimitForce = value
+
+    property limitSoftness:
+        def __get__(self):
+            return self.thisptr.m_limitSoftness
+        def __set__(self, value):
+            self.thisptr.m_limitSoftness = value
+
+    property normalCFM:
+        def __get__(self):
+            return self.thisptr.m_normalCFM
+        def __set__(self, value):
+            self.thisptr.m_normalCFM = value
+
+    property stopERP:
+        """
+        Error tolerance factor when joint is at limit. 
+        """
+        def __get__(self):
+            return self.thisptr.m_stopERP
+        def __set__(self, value):
+            self.thisptr.m_stopERP = value
+
+    property stopCFM:
+        """    
+        Constraint force mixing factor when joint is at limit. 
+        """
+        def __get__(self):
+            return self.thisptr.m_stopCFM
+        def __set__(self, value):
+            self.thisptr.m_stopCFM = value
+
+    property enableMotor:
+        def __get__(self):
+            return self.thisptr.m_enableMotor
+        def __set__(self, value):
+            self.thisptr.m_enableMotor = value
+            
+    property damping:
+        def __get__(self):
+            return self.thisptr.m_damping
+        def __set__(self, value):
+            self.thisptr.m_damping = value
+            
+    property bounce:
+        def __get__(self):
+            return self.thisptr.m_bounce
+        def __set__(self, value):
+            self.thisptr.m_bounce = value
+            
+    # XXX documentation says it's a temporary variable, I don't know
+    # if we need it.
+    property currentLimitError:
+        def __get__(self):
+            return self.thisptr.m_currentLimitError
+        def __set__(self, value):
+            self.thisptr.m_currentLimitError = value
+            
+    property currentPosition:
+        def __get__(self):
+            return self.thisptr.m_currentPosition
+        def __set__(self, value):
+            self.thisptr.m_currentPosition = value
+            
+    property currentLimit:
+        def __get__(self):
+            return self.thisptr.m_currentLimit
+        def __set__(self, value):
+            self.thisptr.m_currentLimit = value                                                
+
+    property accumulatedImpulse:
+        def __get__(self):
+            return self.thisptr.m_accumulatedImpulse
+        def __set__(self, value):
+            self.thisptr.m_accumulatedImpulse = value                                                
+
+
