@@ -241,6 +241,7 @@ cdef extern from "BulletDynamics/ConstraintSolver/btTypedConstraint.h":
         void    enableFeedback (bool needsFeedback)
         btScalar    getAppliedImpulse ()
         btTypedConstraintType   getConstraintType ()
+        void setDbgDrawSize(btScalar dbgDrawSize)
 
 
 cdef extern from "BulletCollision/CollisionShapes/btCompoundShape.h":
@@ -3251,8 +3252,10 @@ cdef class TypedConstraint:
     def getConstraintType(self):
         return self.thisptr.getConstraintType()
 
-    
-    
+    def setDbgDrawSize(self, dbgDrawSize):
+        self.thisptr.setDbgDrawSize(dbgDrawSize)
+
+
 cdef class Generic6DofConstraint(TypedConstraint):
     """
     A generic constraint with 6 possible degrees of freedom.
