@@ -63,7 +63,9 @@ public:
         /* TODO Add proper unit tests for this error handling.
          */
         if (mode) {
-            return PyLong_AsLong(mode);
+            int result = PyLong_AsLong(mode);
+            Py_DECREF(mode);
+            return result;
         } else {
             return 0;
         }
