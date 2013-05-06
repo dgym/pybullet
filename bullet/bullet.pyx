@@ -3125,7 +3125,7 @@ cdef class RaycastVehicle(ActionInterface):
     def getWheelInfo(self, wheelIndex):
         """ Returns the WheelInfo structure for the given wheel. """
         cdef WheelInfo wheelInfo = WheelInfo()
-        wheelInfo.thisptr[0] = (<btRaycastVehicle*>self.thisptr).getWheelInfo(wheelIndex)
+        wheelInfo.thisptr = &((<btRaycastVehicle*>self.thisptr).getWheelInfo(wheelIndex))
         return wheelInfo
 
     def getNumWheels(self):
@@ -3137,7 +3137,7 @@ cdef class RaycastVehicle(ActionInterface):
         cdef btVector3 _wheelAxleCS = btVector3(wheelAxleCS.x, wheelAxleCS.y, wheelAxleCS.z)  
         
         cdef WheelInfo wheelInfo = WheelInfo()
-        wheelInfo.thisptr[0] = (<btRaycastVehicle*>self.thisptr).addWheel(_connectionPointCS0, _wheelDirectionCS0, _wheelAxleCS, suspensionRestLength, wheelRadius, tuning.thisptr[0], isFrontWheel)
+        wheelInfo.thisptr = &((<btRaycastVehicle*>self.thisptr).addWheel(_connectionPointCS0, _wheelDirectionCS0, _wheelAxleCS, suspensionRestLength, wheelRadius, tuning.thisptr[0], isFrontWheel))
         return wheelInfo
 
     def getSteeringValue(self, wheelIndex):
