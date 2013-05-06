@@ -499,6 +499,9 @@ cdef extern from "btBulletDynamicsCommon.h":
         btSequentialImpulseConstraintSolver()
 
 
+    ctypedef void (*btInternalTickCallback)(btDynamicsWorld *world, btScalar timeStep)
+
+
     cdef cppclass btDynamicsWorld: # (btCollisionWorld):
         btDynamicsWorld(
             btDispatcher*, btBroadphaseInterface*, btCollisionConfiguration*)
@@ -517,6 +520,8 @@ cdef extern from "btBulletDynamicsCommon.h":
         void removeAction(btActionInterface*)
 
         int stepSimulation(btScalar, int, btScalar)
+        void setInternalTickCallback(btInternalTickCallback cb, void* worldUserInfo, bool isPreTick)
+        void *getWorldUserInfo()
 
 
     cdef cppclass btDiscreteDynamicsWorld: # (byDynamicsWorld)
@@ -2549,6 +2554,18 @@ cdef class CollisionWorld:
             del results
 
 
+cdef void preInternalTickCallback(btDynamicsWorld *world, btScalar timeStep):
+    cdef DynamicsWorld dynamics_world = <DynamicsWorld>world.getWorldUserInfo()
+    for callback in dynamics_world.pre_tick_callbacks:
+        callback(timeStep)
+
+
+cdef void postInternalTickCallback(btDynamicsWorld *world, btScalar timeStep):
+    cdef DynamicsWorld dynamics_world = <DynamicsWorld>world.getWorldUserInfo()
+    for callback in dynamics_world.post_tick_callbacks:
+        callback(timeStep)
+
+
 cdef class DynamicsWorld(CollisionWorld):
     """
     A DynamicsWorld is a container for RigidBodies which implements dynamics (ie
@@ -2561,6 +2578,7 @@ cdef class DynamicsWorld(CollisionWorld):
     """
     cdef list _rigidBodies
     cdef list _constraints
+    cdef public list pre_tick_callbacks, post_tick_callbacks
 
     def __init__(self,
                  CollisionDispatcher dispatcher = None,
@@ -2568,6 +2586,11 @@ cdef class DynamicsWorld(CollisionWorld):
         CollisionWorld.__init__(self, dispatcher, broadphase)
         self._rigidBodies = []
         self._constraints = []
+        self.pre_tick_callbacks = []
+        self.post_tick_callbacks = []
+        cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
+        world.setInternalTickCallback(preInternalTickCallback, <void *>self, True)
+        world.setInternalTickCallback(postInternalTickCallback, <void *>self, False)
 
     def addConstraint(self, TypedConstraint constraint, bool disableCollisionsBetweenLinkedBodies=False):
         """
