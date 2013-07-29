@@ -204,6 +204,9 @@ cdef extern from "btBulletDynamicsCommon.h":
         void *getUserPointer()
         void setUserPointer(void *)
 
+    cdef int _CF_NO_CONTACT_RESPONSE "btCollisionObject::CF_NO_CONTACT_RESPONSE"
+    cdef int _CF_CUSTOM_MATERIAL_CALLBACK "btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK"
+
 
     cdef cppclass btRigidBody(btCollisionObject)
 
@@ -799,6 +802,15 @@ cdef extern from "BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h":
         
         btVector3 &     getPivotInA ()
         btVector3 &     getPivotInB ()
+
+cdef extern from "BulletCollision/NarrowPhaseCollision/btManifoldPoint.h":
+    cdef cppclass btManifoldPoint:
+        pass
+
+cdef extern from "BulletCollision/CollisionDispatch/btManifoldResult.h":
+    ctypedef btCollisionObject const_btCollisionObject "const btCollisionObject"
+    cdef bool (*gContactAddedCallback)(btManifoldPoint &cp, const_btCollisionObject *colObj0, int partId0, int index0, const_btCollisionObject *colObj1, int partId1, int index1)
+
 
 # Forward declare some things because of circularity in the API.
 cdef class CollisionObject
@@ -1584,6 +1596,13 @@ cdef class CollisionObject:
     cdef public object data
     cdef public int bits
 
+    cdef public int contact_callback_filter_group
+    cdef public int contact_callback_filter_mask
+    cdef public object contact_callback
+
+    CF_NO_CONTACT_RESPONSE = _CF_NO_CONTACT_RESPONSE
+    CF_CUSTOM_MATERIAL_CALLBACK = _CF_CUSTOM_MATERIAL_CALLBACK
+
     def __init__(self):
         self.thisptr = new btCollisionObject()
 
@@ -1708,6 +1727,36 @@ cdef class CollisionObject:
 
     def setCollisionFlags(self, flags):
         self.thisptr.setCollisionFlags(flags)
+
+    def setContactCallback(self, callback, filter_mask, trigger=False):
+        '''
+        Sets a callback that is called on contact with another CollisionObject.
+        N.B. that for objects to contact at all they must have filter groups and
+        filter masks that match up in both directions.
+
+        The callback is only triggered if the supplied filter_mask matches the other
+        object's filter group as set by addRigidBody() and addCollisionObject().
+
+        The callback's signature is:
+        def callback(other_object, duplicate): ...
+
+        other_object - The other CollisionObject.
+        duplicate - True if this is the second callback triggered from the
+            same collision, e.g. if A contacts B and both have callbacks
+            set up with matching masks then the following two callbacks will be
+            made:
+                A.callback(B, False)
+                B.callback(A, True)
+
+        If trigger is set to True the CollisionObject's flags are updated with
+        CF_NO_CONTACT_RESPONSE. This means nothing will respond to collisions
+        with this object. Useful for trigger areas/walls etc.
+        '''
+        self.contact_callback = callback
+        self.contact_callback_filter_mask = filter_mask
+        self.thisptr.setCollisionFlags(self.thisptr.getCollisionFlags() | _CF_CUSTOM_MATERIAL_CALLBACK)
+        if trigger:
+            self.thisptr.setCollisionFlags(self.thisptr.getCollisionFlags() | _CF_NO_CONTACT_RESPONSE)
 
 
 cdef class MotionState:
@@ -2465,6 +2514,7 @@ cdef class CollisionWorld:
             raise ValueError(
                 "Cannot add CollisionObject without a CollisionShape")
         if collisionObject not in self.collisionObjects:
+            collisionObject.contact_callback_filter_group = collision_filter_group
             self.thisptr.addCollisionObject(collisionObject.thisptr, collision_filter_group, collision_filter_mask)
             self.collisionObjects.add(collisionObject)
             collisionObject.thisptr.setUserPointer(<void *>collisionObject)
@@ -2619,6 +2669,7 @@ cdef class DynamicsWorld(CollisionWorld):
         this is the best pattern to use to handle the conflict faced when interfacing these two languages.
         """
         cdef btDynamicsWorld *world = <btDynamicsWorld*>self.thisptr
+        body.contact_callback_filter_group = collision_filter_group
         world.addRigidBody(<btRigidBody*>body.thisptr, collision_filter_group, collision_filter_mask)
         self._rigidBodies.append(body)
         body.thisptr.setUserPointer(<void *>body)
@@ -3741,3 +3792,19 @@ cdef class RotationalLimitMotor:
             self.thisptr.m_accumulatedImpulse = value                                                
 
 
+cdef bool ContactCallback(btManifoldPoint &cp, const_btCollisionObject *colObj0, int partId0, int index0, const_btCollisionObject *colObj1, int partId1, int index1):
+    cdef CollisionObject obj0, obj1
+    cdef bool result = True
+    duplicate = False
+    if colObj0.getUserPointer() and colObj1.getUserPointer():
+        obj0 = <CollisionObject>(colObj0.getUserPointer())
+        obj1 = <CollisionObject>(colObj1.getUserPointer())
+        if obj0.contact_callback and obj0.contact_callback_filter_mask & obj1.contact_callback_filter_group:
+            obj0.contact_callback(obj1, duplicate)
+            duplicate = True
+        if obj1.contact_callback and obj1.contact_callback_filter_mask & obj0.contact_callback_filter_group:
+            obj1.contact_callback(obj0, duplicate)
+    return result
+
+
+gContactAddedCallback = ContactCallback

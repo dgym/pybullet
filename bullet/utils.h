@@ -1,5 +1,8 @@
 #include <list>
 
+#include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
+
+
 struct PyBulletCollision
 {
     PyBulletCollision()
